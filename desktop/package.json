@@ -1,0 +1,19 @@
+{
+  "name": "khsae-tei-desktop",
+  "version": "0.1.0",
+  "description": "KHSAE TEI desktop app: receives whip signals from the mobile app over LAN and simulates pressing Enter.",
+  "main": "src/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {
+    "@nut-tree-fork/nut-js": "^4.2.6",
+    "bonjour-service": "^1.2.1",
+    "qrcode": "^1.5.3",
+    "ws": "^8.17.0"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0"
+  }
+}
