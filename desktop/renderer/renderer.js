@@ -3,6 +3,16 @@ const codeEl = document.getElementById('code');
 const qrEl = document.getElementById('qr');
 const logEl = document.getElementById('log');
 const regenBtn = document.getElementById('regen');
+const relayUrlEl = document.getElementById('relayUrl');
+const relayConnectBtn = document.getElementById('relayConnect');
+const relayDisconnectBtn = document.getElementById('relayDisconnect');
+const relayDotEl = document.getElementById('relayDot');
+const relayStatusEl = document.getElementById('relayStatus');
+
+function setRelayStatus(text, cls) {
+  relayStatusEl.textContent = text;
+  relayDotEl.className = `dot${cls ? ' ' + cls : ''}`;
+}
 
 function log(line) {
   const time = new Date().toLocaleTimeString();
@@ -40,6 +50,18 @@ window.khsaeTei.onServerEvent((event) => {
     case 'code_regenerated':
       log('Pairing code regenerated');
       break;
+    case 'relay_connected':
+      setRelayStatus(`Connected to ${event.url}`, 'connected');
+      log(`Relay connected: ${event.url}`);
+      break;
+    case 'relay_disconnected':
+      setRelayStatus('Disconnected', '');
+      log('Relay disconnected');
+      break;
+    case 'relay_error':
+      setRelayStatus('Error', 'error');
+      log(`Relay error: ${event.error}`);
+      break;
     default:
       log(JSON.stringify(event));
   }
@@ -48,4 +70,15 @@ window.khsaeTei.onServerEvent((event) => {
 regenBtn.addEventListener('click', async () => {
   const newCode = await window.khsaeTei.regenerateCode();
   codeEl.textContent = newCode;
+});
+
+relayConnectBtn.addEventListener('click', () => {
+  const url = relayUrlEl.value.trim();
+  if (!url) return;
+  setRelayStatus('Connecting...', '');
+  window.khsaeTei.relayConnect(url);
+});
+
+relayDisconnectBtn.addEventListener('click', () => {
+  window.khsaeTei.relayDisconnect();
 });

@@ -22,17 +22,17 @@ class WsClient {
   // connection the user asked to establish, not after an explicit
   // disconnect() or a rejected pairing code (retrying that would just fail
   // again until the user fixes the code).
-  String? _ip;
-  int? _port;
+  Uri? _uri;
   String? _code;
   String? _clientName;
   bool _autoReconnect = false;
   int _backoffSeconds = 1;
   static const _maxBackoffSeconds = 16;
 
-  Future<void> connect(String ip, int port, String code, String clientName) async {
-    _ip = ip;
-    _port = port;
+  /// [uri] is the target to connect to directly (LAN, e.g. `ws://192.168.1.5:8787`)
+  /// or via a relay (e.g. `wss://relay.example.com`) - both speak the same protocol.
+  Future<void> connect(Uri uri, String code, String clientName) async {
+    _uri = uri;
     _code = code;
     _clientName = clientName;
     _autoReconnect = true;
@@ -47,7 +47,7 @@ class WsClient {
     _statusController.add(_current);
 
     try {
-      _channel = WebSocketChannel.connect(Uri.parse('ws://$_ip:$_port'));
+      _channel = WebSocketChannel.connect(_uri!);
       await _channel!.ready;
 
       _sub = _channel!.stream.listen(

@@ -13,10 +13,15 @@ class PairingScreen extends StatefulWidget {
   State<PairingScreen> createState() => _PairingScreenState();
 }
 
+enum _ConnectionMode { lan, internet }
+
 class _PairingScreenState extends State<PairingScreen> {
   final _ipController = TextEditingController();
   final _portController = TextEditingController(text: '8787');
+  final _relayUrlController = TextEditingController();
   final _codeController = TextEditingController();
+
+  _ConnectionMode _mode = _ConnectionMode.lan;
 
   final _client = WsClient();
   final _soundPlayer = SoundPlayer();
@@ -41,16 +46,30 @@ class _PairingScreenState extends State<PairingScreen> {
     _client.dispose();
     _ipController.dispose();
     _portController.dispose();
+    _relayUrlController.dispose();
     _codeController.dispose();
     super.dispose();
   }
 
   void _connect() {
-    final ip = _ipController.text.trim();
-    final port = int.tryParse(_portController.text.trim()) ?? 8787;
     final code = _codeController.text.trim();
-    if (ip.isEmpty || code.isEmpty) return;
-    _client.connect(ip, port, code, 'Flutter Test Client');
+    if (code.isEmpty) return;
+
+    final Uri uri;
+    if (_mode == _ConnectionMode.lan) {
+      final ip = _ipController.text.trim();
+      final port = int.tryParse(_portController.text.trim()) ?? 8787;
+      if (ip.isEmpty) return;
+      uri = Uri(scheme: 'ws', host: ip, port: port);
+    } else {
+      final relayUrl = _relayUrlController.text.trim();
+      if (relayUrl.isEmpty) return;
+      final parsed = Uri.tryParse(relayUrl);
+      if (parsed == null) return;
+      uri = parsed;
+    }
+
+    _client.connect(uri, code, 'Flutter Test Client');
   }
 
   void _onWhipGesture() {
@@ -87,6 +106,7 @@ class _PairingScreenState extends State<PairingScreen> {
     if (result == null) return;
     final uri = Uri.tryParse(result);
     if (uri == null || uri.host.isEmpty) return;
+    setState(() => _mode = _ConnectionMode.lan);
     _ipController.text = uri.host;
     if (uri.hasPort) _portController.text = uri.port.toString();
     final code = uri.queryParameters['code'];
@@ -124,22 +144,42 @@ class _PairingScreenState extends State<PairingScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('ខ្សែតី KHSAE TEI')),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            TextField(
-              controller: _ipController,
-              decoration: const InputDecoration(labelText: 'Desktop IP'),
-              keyboardType: TextInputType.number,
+            SegmentedButton<_ConnectionMode>(
+              segments: const [
+                ButtonSegment(value: _ConnectionMode.lan, label: Text('LAN')),
+                ButtonSegment(value: _ConnectionMode.internet, label: Text('Internet')),
+              ],
+              selected: {_mode},
+              onSelectionChanged: (s) => setState(() => _mode = s.first),
             ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _portController,
-              decoration: const InputDecoration(labelText: 'Port'),
-              keyboardType: TextInputType.number,
-            ),
+            const SizedBox(height: 16),
+            if (_mode == _ConnectionMode.lan) ...[
+              TextField(
+                controller: _ipController,
+                decoration: const InputDecoration(labelText: 'Desktop IP'),
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _portController,
+                decoration: const InputDecoration(labelText: 'Port'),
+                keyboardType: TextInputType.number,
+              ),
+            ] else
+              TextField(
+                controller: _relayUrlController,
+                decoration: const InputDecoration(
+                  labelText: 'Relay URL',
+                  hintText: 'wss://your-relay-host',
+                ),
+                keyboardType: TextInputType.url,
+              ),
             const SizedBox(height: 8),
             TextField(
               controller: _codeController,
@@ -147,20 +187,21 @@ class _PairingScreenState extends State<PairingScreen> {
               keyboardType: TextInputType.number,
             ),
             const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: _discovering ? null : _discover,
-                    child: Text(_discovering ? 'Searching...' : 'Discover'),
+            if (_mode == _ConnectionMode.lan)
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _discovering ? null : _discover,
+                      child: Text(_discovering ? 'Searching...' : 'Discover'),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton(onPressed: _scanQr, child: const Text('Scan QR')),
-                ),
-              ],
-            ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton(onPressed: _scanQr, child: const Text('Scan QR')),
+                  ),
+                ],
+              ),
             const SizedBox(height: 8),
             ElevatedButton(onPressed: _connect, child: const Text('Connect')),
             const SizedBox(height: 16),
@@ -183,7 +224,8 @@ class _PairingScreenState extends State<PairingScreen> {
             ),
             const SizedBox(height: 16),
             const Text('Events', style: TextStyle(fontWeight: FontWeight.bold)),
-            Expanded(
+            SizedBox(
+              height: 200,
               child: ListView.builder(
                 itemCount: _log.length,
                 itemBuilder: (context, i) => Text(_log[i], style: const TextStyle(fontSize: 12)),

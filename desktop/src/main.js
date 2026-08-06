@@ -3,10 +3,12 @@ const path = require('path');
 const os = require('os');
 const QRCode = require('qrcode');
 const { WhipServer, DEFAULT_PORT } = require('./server');
+const { RelayClient } = require('./relay_client');
 const discovery = require('./discovery');
 
 let mainWindow;
 let whipServer;
+let relayClient;
 
 function getLanIp() {
   const interfaces = os.networkInterfaces();
@@ -23,7 +25,7 @@ function getLanIp() {
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 420,
-    height: 520,
+    height: 660,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -52,6 +54,11 @@ app.whenReady().then(() => {
   whipServer.start();
   discovery.advertise(whipServer.port);
 
+  relayClient = new RelayClient(whipServer);
+  relayClient.on('event', (event) => {
+    if (mainWindow) mainWindow.webContents.send('server-event', event);
+  });
+
   mainWindow.webContents.on('did-finish-load', sendServerInfo);
 
   ipcMain.handle('regenerate-code', async () => {
@@ -59,10 +66,19 @@ app.whenReady().then(() => {
     await sendServerInfo();
     return whipServer.code;
   });
+
+  ipcMain.handle('relay-connect', (_event, url) => {
+    relayClient.connect(url);
+  });
+
+  ipcMain.handle('relay-disconnect', () => {
+    relayClient.disconnect();
+  });
 });
 
 app.on('window-all-closed', () => {
   discovery.stop();
+  if (relayClient) relayClient.disconnect();
   if (whipServer) whipServer.stop();
   if (process.platform !== 'darwin') app.quit();
 });
