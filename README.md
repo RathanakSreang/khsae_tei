@@ -1,3 +1,5 @@
+<img src="branding/khsae_tei_logo.png" alt="KHSAE TEI logo" width="160" />
+
 # ខ្សែតី (KHSAE TEI)
 
 A "whip-app": swing your phone, it plays a whip sound and tells your desktop to press **Enter** — handy for approving an AI confirmation prompt without reaching for the keyboard.
@@ -55,4 +57,5 @@ desktop/   Electron app (WebSocket server + keypress simulation + relay client)
 mobile/    Flutter app (gesture detection + WebSocket client, LAN or relay)
 relay/     Rendezvous server for pairing over the internet
 docs/      Wire protocol spec
+branding/  Logo / app icon source
 ```
