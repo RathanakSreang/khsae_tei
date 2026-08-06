@@ -12,9 +12,14 @@ class WsClient {
 
   final _statusController = StreamController<ConnectionStatus>.broadcast();
   final _eventController = StreamController<String>.broadcast();
+  final _ackController = StreamController<void>.broadcast();
 
   Stream<ConnectionStatus> get status => _statusController.stream;
   Stream<String> get events => _eventController.stream;
+
+  /// Fires each time the desktop confirms a whip command was actually
+  /// carried out (the Enter keypress landed), not just "message sent".
+  Stream<void> get onAck => _ackController.stream;
 
   ConnectionStatus _current = ConnectionStatus.disconnected;
 
@@ -95,6 +100,7 @@ class WsClient {
         break;
       case 'ack':
         _eventController.add('Whip acknowledged');
+        _ackController.add(null);
         break;
       case 'error':
         _current = ConnectionStatus.error;
@@ -132,5 +138,6 @@ class WsClient {
     disconnect();
     _statusController.close();
     _eventController.close();
+    _ackController.close();
   }
 }

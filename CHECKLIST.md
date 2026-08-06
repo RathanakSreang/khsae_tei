@@ -18,6 +18,7 @@ Status snapshot of the MVP (WiFi/LAN only, Linux desktop only) described in `doc
 - [x] Mobile: "Test Whip" manual trigger button
 - [x] Mobile: accelerometer-based whip detection (acceleration magnitude spike + refractory debounce)
 - [x] Mobile: local whip sound playback on trigger — real recorded whip-crack clips, randomly picked from a 5-clip pool each trigger
+- [x] Mobile: success sound (cow moo, randomly picked from 3 clips) plays when the desktop actually acks the whip — i.e. confirms the command landed, not just that it was sent; plays on its own audio player so it doesn't cut off an in-flight whip-crack sound
 - [x] Mobile: mDNS auto-discovery ("Discover" button)
 - [x] Mobile: QR-code scan-to-pair flow
 - [x] Mobile: AndroidManifest permissions wired (INTERNET, CAMERA, CHANGE_WIFI_MULTICAST_STATE, cleartext traffic for `ws://`)

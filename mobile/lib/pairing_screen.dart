@@ -35,6 +35,7 @@ class _PairingScreenState extends State<PairingScreen> {
     super.initState();
     _client.status.listen((s) => setState(() => _status = s));
     _client.events.listen((e) => setState(() => _log.insert(0, e)));
+    _client.onAck.listen((_) => _soundPlayer.playSuccess());
     _whipDetector.onWhip.listen((_) => _onWhipGesture());
     _whipDetector.start();
   }
