@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:multicast_dns/multicast_dns.dart';
 
 class DiscoveredService {
@@ -10,10 +11,15 @@ class DiscoveredService {
 
 class MdnsDiscovery {
   static const _serviceType = '_khsaetei._tcp.local';
+  static const _lockChannel = MethodChannel('khsae_tei/multicast_lock');
 
   Future<List<DiscoveredService>> discover({Duration timeout = const Duration(seconds: 3)}) async {
     final client = MDnsClient();
     final results = <DiscoveredService>[];
+    // Android silently drops incoming multicast (mDNS reply) packets over
+    // WiFi unless a MulticastLock is held - without this, queries go out
+    // fine but responses never arrive back.
+    await _lockChannel.invokeMethod('acquire');
     await client.start();
     try {
       await for (final ptr in client
@@ -31,6 +37,7 @@ class MdnsDiscovery {
       }
     } finally {
       client.stop();
+      await _lockChannel.invokeMethod('release');
     }
     return results;
   }

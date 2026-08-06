@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
-import 'pairing_screen.dart';
+import 'app_shell.dart';
+import 'background_service.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await initializeBackgroundService();
   runApp(const KhsaeTeiApp());
 }
 
@@ -14,7 +17,7 @@ class KhsaeTeiApp extends StatelessWidget {
     return MaterialApp(
       title: 'KHSAE TEI',
       theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.amber)),
-      home: const PairingScreen(),
+      home: const AppShell(),
     );
   }
 }

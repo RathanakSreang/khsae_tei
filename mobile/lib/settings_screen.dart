@@ -1,50 +1,81 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
 
 import 'discovery.dart';
 import 'qr_scan_screen.dart';
-import 'sound_player.dart';
-import 'whip_detector.dart';
+import 'settings_store.dart';
 import 'ws_client.dart';
 
-class PairingScreen extends StatefulWidget {
-  const PairingScreen({super.key});
+const _batteryChannel = MethodChannel('khsae_tei/multicast_lock');
+
+class SettingsScreen extends StatefulWidget {
+  const SettingsScreen({super.key});
 
   @override
-  State<PairingScreen> createState() => _PairingScreenState();
+  State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-enum _ConnectionMode { lan, internet }
-
-class _PairingScreenState extends State<PairingScreen> {
+class _SettingsScreenState extends State<SettingsScreen> {
   final _ipController = TextEditingController();
   final _portController = TextEditingController(text: '8787');
   final _relayUrlController = TextEditingController();
   final _codeController = TextEditingController();
 
-  _ConnectionMode _mode = _ConnectionMode.lan;
-
-  final _client = WsClient();
-  final _soundPlayer = SoundPlayer();
-  final _whipDetector = WhipDetector();
+  ConnectionMode _mode = ConnectionMode.lan;
   ConnectionStatus _status = ConnectionStatus.disconnected;
   final List<String> _log = [];
   bool _discovering = false;
 
+  StreamSubscription<Map<String, dynamic>?>? _statusSub;
+  StreamSubscription<Map<String, dynamic>?>? _eventSub;
+
   @override
   void initState() {
     super.initState();
-    _client.status.listen((s) => setState(() => _status = s));
-    _client.events.listen((e) => setState(() => _log.insert(0, e)));
-    _client.onAck.listen((_) => _soundPlayer.playSuccess());
-    _whipDetector.onWhip.listen((_) => _onWhipGesture());
-    _whipDetector.start();
+    // Same as HomeScreen: the background-service platform channel isn't
+    // available outside a real Android/iOS run.
+    try {
+      _statusSub = FlutterBackgroundService().on('statusUpdate').listen((event) {
+        final name = event?['status'] as String?;
+        final status = ConnectionStatus.values.firstWhere(
+          (s) => s.name == name,
+          orElse: () => ConnectionStatus.disconnected,
+        );
+        if (mounted) setState(() => _status = status);
+      });
+      _eventSub = FlutterBackgroundService().on('logEvent').listen((event) {
+        final message = event?['message'] as String?;
+        if (message != null && mounted) setState(() => _log.insert(0, message));
+      });
+    } catch (_) {
+      // No platform implementation available; stay in the default state.
+    }
+    _loadSavedConfig();
+  }
+
+  Future<void> _loadSavedConfig() async {
+    try {
+      final saved = await SettingsStore().load();
+      if (saved == null || !mounted) return;
+      setState(() {
+        _mode = saved.mode;
+        _ipController.text = saved.ip;
+        _portController.text = saved.port;
+        _relayUrlController.text = saved.relayUrl;
+        _codeController.text = saved.code;
+      });
+    } catch (_) {
+      // No platform implementation available; keep the blank defaults.
+    }
   }
 
   @override
   void dispose() {
-    _whipDetector.dispose();
-    _soundPlayer.dispose();
-    _client.dispose();
+    _statusSub?.cancel();
+    _eventSub?.cancel();
     _ipController.dispose();
     _portController.dispose();
     _relayUrlController.dispose();
@@ -52,30 +83,31 @@ class _PairingScreenState extends State<PairingScreen> {
     super.dispose();
   }
 
-  void _connect() {
+  Future<void> _connect() async {
     final code = _codeController.text.trim();
     if (code.isEmpty) return;
+    if (_mode == ConnectionMode.lan && _ipController.text.trim().isEmpty) return;
+    if (_mode == ConnectionMode.internet && _relayUrlController.text.trim().isEmpty) return;
 
-    final Uri uri;
-    if (_mode == _ConnectionMode.lan) {
-      final ip = _ipController.text.trim();
-      final port = int.tryParse(_portController.text.trim()) ?? 8787;
-      if (ip.isEmpty) return;
-      uri = Uri(scheme: 'ws', host: ip, port: port);
-    } else {
-      final relayUrl = _relayUrlController.text.trim();
-      if (relayUrl.isEmpty) return;
-      final parsed = Uri.tryParse(relayUrl);
-      if (parsed == null) return;
-      uri = parsed;
+    final config = ConnectionConfig(
+      mode: _mode,
+      ip: _ipController.text.trim(),
+      port: _portController.text.trim(),
+      code: code,
+      relayUrl: _relayUrlController.text.trim(),
+    );
+    await SettingsStore().save(config);
+
+    final service = FlutterBackgroundService();
+    if (!await service.isRunning()) {
+      await service.startService();
     }
-
-    _client.connect(uri, code, 'Flutter Test Client');
+    service.invoke('updateConfig', config.toMap());
+    service.invoke('connect');
   }
 
-  void _onWhipGesture() {
-    _soundPlayer.playWhip();
-    _client.sendWhip();
+  void _disconnect() {
+    FlutterBackgroundService().invoke('disconnect');
   }
 
   Future<void> _discover() async {
@@ -107,12 +139,16 @@ class _PairingScreenState extends State<PairingScreen> {
     if (result == null) return;
     final uri = Uri.tryParse(result);
     if (uri == null || uri.host.isEmpty) return;
-    setState(() => _mode = _ConnectionMode.lan);
+    setState(() => _mode = ConnectionMode.lan);
     _ipController.text = uri.host;
     if (uri.hasPort) _portController.text = uri.port.toString();
     final code = uri.queryParameters['code'];
     if (code != null) _codeController.text = code;
-    _connect();
+    await _connect();
+  }
+
+  Future<void> _requestIgnoreBatteryOptimizations() async {
+    await _batteryChannel.invokeMethod('requestIgnoreBatteryOptimizations');
   }
 
   String get _statusLabel {
@@ -144,23 +180,23 @@ class _PairingScreenState extends State<PairingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('ខ្សែតី KHSAE TEI')),
+      appBar: AppBar(title: const Text('Settings')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            SegmentedButton<_ConnectionMode>(
+            SegmentedButton<ConnectionMode>(
               segments: const [
-                ButtonSegment(value: _ConnectionMode.lan, label: Text('LAN')),
-                ButtonSegment(value: _ConnectionMode.internet, label: Text('Internet')),
+                ButtonSegment(value: ConnectionMode.lan, label: Text('LAN')),
+                ButtonSegment(value: ConnectionMode.internet, label: Text('Internet')),
               ],
               selected: {_mode},
               onSelectionChanged: (s) => setState(() => _mode = s.first),
             ),
             const SizedBox(height: 16),
-            if (_mode == _ConnectionMode.lan) ...[
+            if (_mode == ConnectionMode.lan) ...[
               TextField(
                 controller: _ipController,
                 decoration: const InputDecoration(labelText: 'Desktop IP'),
@@ -188,7 +224,7 @@ class _PairingScreenState extends State<PairingScreen> {
               keyboardType: TextInputType.number,
             ),
             const SizedBox(height: 16),
-            if (_mode == _ConnectionMode.lan)
+            if (_mode == ConnectionMode.lan)
               Row(
                 children: [
                   Expanded(
@@ -204,7 +240,17 @@ class _PairingScreenState extends State<PairingScreen> {
                 ],
               ),
             const SizedBox(height: 8),
-            ElevatedButton(onPressed: _connect, child: const Text('Connect')),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton(onPressed: _connect, child: const Text('Connect')),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton(onPressed: _disconnect, child: const Text('Disconnect')),
+                ),
+              ],
+            ),
             const SizedBox(height: 16),
             Row(
               children: [
@@ -219,9 +265,16 @@ class _PairingScreenState extends State<PairingScreen> {
             ),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: _status == ConnectionStatus.paired ? _client.sendWhip : null,
+              onPressed: _status == ConnectionStatus.paired
+                  ? () => FlutterBackgroundService().invoke('testWhip')
+                  : null,
               style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 20)),
               child: const Text('Test Whip', style: TextStyle(fontSize: 20)),
+            ),
+            const SizedBox(height: 16),
+            OutlinedButton(
+              onPressed: _requestIgnoreBatteryOptimizations,
+              child: const Text('Disable battery optimization for this app'),
             ),
             const SizedBox(height: 16),
             const Text('Events', style: TextStyle(fontWeight: FontWeight.bold)),

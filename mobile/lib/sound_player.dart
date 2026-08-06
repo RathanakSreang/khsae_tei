@@ -5,19 +5,19 @@ import 'package:audioplayers/audioplayers.dart';
 /// A pool of real whip-crack recordings; a random one plays per gesture so
 /// repeated whips don't sound identical.
 const _whipClips = [
-  'sounds/universfield-whip-crack-02-244949.mp3',
-  'sounds/universfield-whip-crack-123738.mp3',
-  'sounds/universfield-whip-crack-252032.mp3',
-  'sounds/universfield-whip-snap-242215.mp3',
-  'sounds/freesound_community-mixed-whip-crack-1-102825.mp3',
+  'sounds/whip/universfield-whip-crack-02-244949.mp3',
+  'sounds/whip/universfield-whip-crack-123738.mp3',
+  'sounds/whip/universfield-whip-crack-252032.mp3',
+  'sounds/whip/universfield-whip-snap-242215.mp3',
+  'sounds/whip/freesound_community-mixed-whip-crack-1-102825.mp3',
 ];
 
 /// Plays once the desktop acks a whip (the command actually landed) - a cow
 /// moo, because a whip made a cow move.
 const _successClips = [
-  'sounds/universfield-cow-moo-122255.mp3',
-  'sounds/scottishperson-sound-effect-cow-mooing-356517.mp3',
-  'sounds/ribhavagrawal-cow-mooing-type-03-293302.mp3',
+  'sounds/cow/universfield-cow-moo-122255.mp3',
+  'sounds/cow/scottishperson-sound-effect-cow-mooing-356517.mp3',
+  'sounds/cow/ribhavagrawal-cow-mooing-type-03-293302.mp3',
 ];
 
 class SoundPlayer {

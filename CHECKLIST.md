@@ -4,19 +4,20 @@ Status snapshot of the MVP (WiFi/LAN only, Linux desktop only) described in `doc
 
 ## Done
 
-- [x] Repo scaffolded as two packages: `desktop/` (Electron + Node) and `mobile/` (Flutter)
+- [x] Repo scaffolded as two packages: `desktop/` (Python) and `mobile/` (Flutter)
 - [x] `docs/protocol.md` — wire protocol spec (handshake, whip signal, discovery)
-- [x] Desktop: WebSocket server (`ws`) on port 8787
+- [x] Desktop: WebSocket server (`websockets`) on port 8787
 - [x] Desktop: pairing-code handshake (`hello` → `paired`/`error`) required before whip messages are accepted
-- [x] Desktop: Enter-key simulation via `@nut-tree-fork/nut-js`, triggered on whip messages
-- [x] Desktop: mDNS advertisement (`_khsaetei._tcp.local`) via `bonjour-service`
-- [x] Desktop: renderer UI — IP/port, pairing code (regenerable), QR code, live connection/whip event log
+- [x] Desktop: Enter-key simulation via `pynput`, triggered on whip messages
+- [x] Desktop: mDNS advertisement (`_khsaetei._tcp.local`) via `zeroconf` (backgrounded so a slow/blocked network can't stall startup)
+- [x] Desktop: terminal UI — IP/port, pairing code (regenerable via `r` command), ASCII QR code, live connection/whip event log
+- [x] Desktop: migrated from the original Electron/Node implementation to a plain Python script (2026-08-06) — same wire protocol, no GUI window, run with `uv run main.py`
 - [x] Desktop↔protocol verified end-to-end with a scripted WS client: wrong code rejected, correct code → `paired` → `whip` → `ack`, keypress simulation runs without error
 - [x] Mobile: Flutter project scaffolded (Android)
-- [x] Mobile: pairing screen — manual IP/port/code entry + Connect
+- [x] Mobile: Settings screen — manual IP/port/code entry + Connect (moved out of a single combined screen, see two-screen architecture below)
 - [x] Mobile: WebSocket client with handshake and reconnect-with-backoff
 - [x] Mobile: "Test Whip" manual trigger button
-- [x] Mobile: accelerometer-based whip detection (acceleration magnitude spike + refractory debounce)
+- [x] Mobile: accelerometer-based whip detection (acceleration magnitude spike + refractory debounce), sampled at ~50Hz (`SensorInterval.gameInterval` — the default ~5Hz was too slow to catch a whip-crack transient) and tuned from real on-device data (threshold 15.0 m/s², see below)
 - [x] Mobile: local whip sound playback on trigger — real recorded whip-crack clips, randomly picked from a 5-clip pool each trigger
 - [x] Mobile: success sound (cow moo, randomly picked from 3 clips) plays when the desktop actually acks the whip — i.e. confirms the command landed, not just that it was sent; plays on its own audio player so it doesn't cut off an in-flight whip-crack sound
 - [x] Mobile: mDNS auto-discovery ("Discover" button)
@@ -26,25 +27,37 @@ Status snapshot of the MVP (WiFi/LAN only, Linux desktop only) described in `doc
 - [x] Initial commit pushed to `origin/master`
 - [x] **Internet relay/bridge server** (`relay/`) — rendezvous server so phone and desktop can pair when not on the same LAN, using the exact same pairing code as LAN mode
   - [x] `relay/src/server.js` — routes by pairing code, forwards frames verbatim once both sides are attached, rejects unknown/already-taken codes at the relay itself
-  - [x] Desktop: `relay_client.js` — persistent outbound connection to a configured relay URL, reconnect-with-backoff, reuses the exact same hello/whip/ack session logic as the LAN server (refactored into `WhipServer.createSessionHandler`)
-  - [x] Desktop: renderer UI — relay URL field, Connect/Disconnect, live status dot
+  - [x] Desktop: `relay_client.py` — persistent outbound connection to a configured relay URL, reconnect-with-backoff, reuses the exact same hello/whip/ack session logic as the LAN server (`WhipServer.create_session_handler`)
+  - [x] Desktop: terminal commands — `c <url>` to connect, `d` to disconnect, event log shows live status
   - [x] Mobile: LAN/Internet mode switch on the pairing screen; Internet mode connects via an arbitrary relay URL using the same `WsClient`
   - [x] `docs/protocol.md` — relay protocol section (`relay_register`/`relay_registered`, routing rules, forwarding behavior)
-  - [x] Verified end-to-end locally: relay + desktop (plain Node, no Electron needed) + scripted phone clients — wrong code rejected by the relay itself, a second phone joining an already-paired code rejected, and (this was a real bug caught by testing) **sequential** phones pairing one after another over the same persistent desktop↔relay connection now works correctly
+  - [x] Verified end-to-end locally: relay + Python desktop + scripted phone clients — wrong code rejected by the relay itself, a second phone joining an already-paired code rejected, and **sequential** phones pairing one after another over the same persistent desktop↔relay connection works correctly
   - [x] Cross-verified the same round trip from the actual Dart `web_socket_channel` client (not just Node's `ws`), confirming the mobile-side protocol implementation is compatible
 - [x] **App icons / branding** — `branding/khsae_tei_logo.png` (provided) is now the source of truth for app icons
-  - [x] Android launcher icons regenerated at all 5 densities (mdpi–xxxhdpi) from the logo
-  - [x] Desktop: `desktop/assets/icon.png` (512×512), wired into the `BrowserWindow` icon and the renderer's favicon link
+  - [x] Android launcher icons regenerated at all 5 densities (mdpi–xxxhdpi) from the logo; confirmed rendering correctly on a real device (2026-08-06)
+  - [x] Desktop: `desktop/assets/icon.png` (512×512) kept as the branding source; unused since the Python rewrite has no window to attach an icon to
   - [x] README now displays the logo
+- [x] **On-device verification pass (2026-08-06, real Galaxy Note20, Android 13)**:
+  - [x] LAN manual pairing (IP/port/code entry) → paired → whip → real Enter keypress simulated on desktop, confirmed via desktop log
+  - [x] QR-code scan-to-pair flow — camera scan correctly filled fields and connected
+  - [x] Internet/relay pairing flow through the actual mobile UI (not just a scripted client) — paired via a local relay instance, whip → ack round trip confirmed
+  - [x] Accelerometer whip detection — tuned from real on-device magnitude data (see below), confirmed a real whip motion now triggers correctly (sound + event) at the new threshold
+  - [x] Found and fixed real bugs along the way (not pre-existing knowledge, discovered during this pass):
+    - Android silently drops incoming mDNS/multicast packets over WiFi unless the app holds a `WifiManager.MulticastLock`; the `multicast_dns` package never acquires one. Added a small native platform channel (`MainActivity.kt` + `discovery.dart`) to acquire/release it around each discovery call.
+    - `mobile_scanner` 7.4.0 (bumped earlier) needs AGP ≥8.9.1; project was pinned to 8.7.0. Bumped AGP to 8.9.1, Gradle to 8.11.1, Kotlin to 2.1.0 to match.
+    - `WhipDetector` sampled the accelerometer at the `sensors_plus` default (~5Hz), far too slow to catch a whip-crack transient that peaks and decays in well under 150ms. Switched to `SensorInterval.gameInterval` (~50Hz).
+    - Whip threshold was an untuned guess (30 m/s²) that real swings never reached (measured peaks: 10.2–23.5 m/s²). Retuned to 15.0 m/s² from that data.
+  - [ ] mDNS **Discover** button specifically: fixed the multicast-lock bug above, but on the test WiFi network the desktop's own multicast advertisement never reached the phone at all (raw socket sniff confirmed zero packets arrive), while regular unicast (LAN pairing, relay) worked fine after a brief delay. This looks like router-level multicast filtering (common on consumer/mesh APs, distinct from full AP client isolation) rather than an app bug — manual entry and QR scan are the confirmed-working fallbacks on networks like this one, exactly as `docs/protocol.md` already assumes. Still needs verification on a network without this restriction.
+  - [ ] Walking/pocket-jostling false-positive tuning specifically wasn't captured cleanly this pass (data collection kept getting confounded with grip-adjustment noise); the 15.0 m/s² threshold is a real improvement over the untuned 30.0 default but hasn't been stress-tested against a dedicated "normal handling only" baseline yet.
+- [x] **Two-screen app + background-surviving connection (2026-08-06)** — Home (`home_screen.dart`, minimal dashboard: branding, status, Start/Stop) and Settings (`settings_screen.dart`, connection config + Test Whip + event log), navigated via a bottom `NavigationBar`/`IndexedStack` shell (`app_shell.dart`)
+  - [x] The live `WsClient`/`WhipDetector`/`SoundPlayer` moved out of the UI into a `flutter_background_service` foreground-service isolate (`background_service.dart`), so the connection and gesture detection keep running independent of any screen being open
+  - [x] Notification kept as unobtrusive as Android allows for a true foreground service: `Importance.low`, no sound/vibration/badge (Android requires *some* notification for indefinite background work — there's no way around that)
+  - [x] Connection settings persisted via `shared_preferences` (`settings_store.dart`) — Settings is prefilled and the service can reconnect on its own after a restart
+  - [x] "Disable battery optimization for this app" button in Settings (`MainActivity.kt` platform channel, `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`) — added because OEM battery managers (confirmed on this same Samsung device) throttle background services that aren't exempted, regardless of the foreground-service notification
+  - [x] Verified end-to-end on the real Galaxy Note20: started from Home (silent notification appears, confirmed via `dumpsys notification`), connected from Settings, backgrounded the app (confirmed the process + foreground service survive via `dumpsys activity services`), did a **real whip motion with the app fully backgrounded** — sound played and the desktop received it, Stop cleanly tears down the service (notification disappears), settings correctly prefill after a full force-stop + relaunch
+  - [ ] iOS not touched (Android-only scope, see below); boot-persistence (`autoStartOnBoot`) deliberately left off — "runs until user stops it" was read as a user-initiated start each session, not surviving a reboot
 
 ## Not done yet
-
-Needs a real phone (can't be done in this dev sandbox):
-- [ ] On-device verification of accelerometer whip detection
-- [ ] On-device verification of mDNS discovery
-- [ ] On-device verification of QR-code scanning
-- [ ] On-device verification of the Internet/relay pairing flow through the mobile UI (relay protocol itself is verified server-side and via a scripted Dart client, but not yet through the actual app UI on a phone)
-- [ ] Threshold/debounce tuning against real false positives (walking, pocket jostling) — current values (30 m/s² threshold, 800ms refractory) are untuned starting guesses
 
 Needs a real deployment (relay was only built + tested locally so far, per the "build+test locally for now" decision):
 - [ ] Deploy the relay somewhere publicly reachable (no hosting target chosen yet)
@@ -53,11 +66,10 @@ Needs a real deployment (relay was only built + tested locally so far, per the "
 
 Explicitly deferred / out of MVP scope:
 - [ ] Bluetooth transport
-- [ ] Windows/macOS desktop support (nut-js is cross-platform-capable but untested outside Linux)
-- [ ] Tray-resident desktop window / minimize-to-tray (currently a plain window)
+- [ ] Windows/macOS desktop support (`pynput` is cross-platform-capable but untested outside Linux)
+- [ ] Any kind of desktop GUI/tray icon (currently a plain terminal script; deliberately dropped the Electron window)
 - [ ] TLS/WSS for the LAN path (plain `ws://`, acceptable for the LAN-only threat model — this is distinct from the relay's TLS need above, since the relay is public-facing)
 
 Polish / production-readiness, not started:
-- [ ] Packaging & distribution (Electron builder, signed release APK, etc.) — note the app icon assets are now in place for whenever this happens
-- [ ] On-device verification that the new Android launcher icon actually renders correctly (needs a real phone/emulator build)
-- [ ] Automated integration/CI tests (currently one Flutter widget test + one manual Node protocol script, no CI pipeline)
+- [ ] Packaging & distribution (e.g. PyInstaller for the desktop script, signed release APK for mobile, etc.)
+- [ ] Automated integration/CI tests (currently one Flutter widget test + manual scripted protocol tests, no CI pipeline)
