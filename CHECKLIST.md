@@ -17,7 +17,7 @@ Status snapshot of the MVP (WiFi/LAN only, Linux desktop only) described in `doc
 - [x] Mobile: WebSocket client with handshake and reconnect-with-backoff
 - [x] Mobile: "Test Whip" manual trigger button
 - [x] Mobile: accelerometer-based whip detection (acceleration magnitude spike + refractory debounce)
-- [x] Mobile: local whip sound playback on trigger (placeholder synthesized sound)
+- [x] Mobile: local whip sound playback on trigger — real recorded whip-crack clips, randomly picked from a 5-clip pool each trigger
 - [x] Mobile: mDNS auto-discovery ("Discover" button)
 - [x] Mobile: QR-code scan-to-pair flow
 - [x] Mobile: AndroidManifest permissions wired (INTERNET, CAMERA, CHANGE_WIFI_MULTICAST_STATE, cleartext traffic for `ws://`)
@@ -60,4 +60,3 @@ Polish / production-readiness, not started:
 - [ ] Packaging & distribution (Electron builder, signed release APK, etc.) — note the app icon assets are now in place for whenever this happens
 - [ ] On-device verification that the new Android launcher icon actually renders correctly (needs a real phone/emulator build)
 - [ ] Automated integration/CI tests (currently one Flutter widget test + one manual Node protocol script, no CI pipeline)
-- [ ] Replace placeholder synthesized `mobile/assets/sounds/whip.wav` with a real whip sound sample
