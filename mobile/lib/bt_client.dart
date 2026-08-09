@@ -1,13 +1,18 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:flutter_classic_bluetooth/flutter_classic_bluetooth.dart';
 
-enum ConnectionStatus { disconnected, connecting, paired, error }
+import 'ws_client.dart';
 
-class WsClient {
-  WebSocketChannel? _channel;
-  StreamSubscription? _sub;
+/// Bluetooth Classic (RFCOMM/SPP) counterpart to [WsClient] - same public
+/// shape (status/events/onAck streams, connect/sendWhip/disconnect) and the
+/// exact same hello/paired/ack/error state machine, just framed as
+/// newline-delimited JSON over a raw byte stream instead of WebSocket text
+/// frames, since RFCOMM doesn't preserve message boundaries.
+class BtClient {
+  StreamSubscription<String>? _sub;
+  BtcConnection? _connection;
   Timer? _reconnectTimer;
 
   final _statusController = StreamController<ConnectionStatus>.broadcast();
@@ -16,48 +21,42 @@ class WsClient {
 
   Stream<ConnectionStatus> get status => _statusController.stream;
   Stream<String> get events => _eventController.stream;
-
-  /// Fires each time the desktop confirms a whip command was actually
-  /// carried out (the Enter keypress landed), not just "message sent".
   Stream<void> get onAck => _ackController.stream;
 
   ConnectionStatus _current = ConnectionStatus.disconnected;
 
-  // Reconnect state: only auto-reconnect after an unexpected drop of a
-  // connection the user asked to establish, not after an explicit
-  // disconnect() or a rejected pairing code (retrying that would just fail
-  // again until the user fixes the code).
-  Uri? _uri;
+  // Same reconnect discipline as WsClient: only auto-retry an unexpected
+  // drop of a connection the user asked for, not an explicit disconnect()
+  // or a rejected pairing code.
+  String? _address;
   String? _code;
   String? _clientName;
   bool _autoReconnect = false;
   int _backoffSeconds = 1;
   static const _maxBackoffSeconds = 16;
 
-  /// [uri] is the target to connect to directly (LAN, e.g. `ws://192.168.1.5:8787`)
-  /// or via a relay (e.g. `wss://relay.example.com`) - both speak the same protocol.
-  Future<void> connect(Uri uri, String code, String clientName) async {
-    _uri = uri;
+  Future<void> connect(String address, String code, String clientName) async {
+    _address = address;
     _code = code;
     _clientName = clientName;
     _autoReconnect = true;
     _backoffSeconds = 1;
-    await _openSocket();
+    await _openConnection();
   }
 
-  Future<void> _openSocket() async {
+  Future<void> _openConnection() async {
     _reconnectTimer?.cancel();
-    _teardownSocket();
+    _teardownConnection();
     _current = ConnectionStatus.connecting;
     _statusController.add(_current);
 
     try {
-      _channel = WebSocketChannel.connect(_uri!);
-      await _channel!.ready;
+      final connection = await FlutterClassicBluetooth().connect(address: _address!);
+      _connection = connection;
 
-      _sub = _channel!.stream.listen(
+      _sub = connection.input.lines().listen(
         _onMessage,
-        onError: (err) {
+        onError: (Object err) {
           _current = ConnectionStatus.error;
           _statusController.add(_current);
           _eventController.add('Connection error: $err');
@@ -71,7 +70,7 @@ class WsClient {
         },
       );
 
-      _send({'type': 'hello', 'code': _code, 'clientName': _clientName});
+      await _send({'type': 'hello', 'code': _code, 'clientName': _clientName});
     } catch (e) {
       _current = ConnectionStatus.error;
       _statusController.add(_current);
@@ -84,13 +83,13 @@ class WsClient {
     if (!_autoReconnect) return;
     _eventController.add('Reconnecting in ${_backoffSeconds}s...');
     _reconnectTimer = Timer(Duration(seconds: _backoffSeconds), () {
-      if (_autoReconnect) _openSocket();
+      if (_autoReconnect) _openConnection();
     });
     _backoffSeconds = (_backoffSeconds * 2).clamp(1, _maxBackoffSeconds);
   }
 
-  void _onMessage(dynamic raw) {
-    final msg = jsonDecode(raw as String) as Map<String, dynamic>;
+  void _onMessage(String raw) {
+    final msg = jsonDecode(raw) as Map<String, dynamic>;
     switch (msg['type']) {
       case 'paired':
         _current = ConnectionStatus.paired;
@@ -119,21 +118,23 @@ class WsClient {
     _send({'type': 'whip', 'ts': DateTime.now().millisecondsSinceEpoch});
   }
 
-  void _send(Map<String, dynamic> msg) {
-    _channel?.sink.add(jsonEncode(msg));
+  Future<void> _send(Map<String, dynamic> msg) async {
+    await _connection?.output.writeLine(jsonEncode(msg), newline: '\n');
   }
 
-  void _teardownSocket() {
+  void _teardownConnection() {
     _sub?.cancel();
-    _channel?.sink.close();
-    _channel = null;
     _sub = null;
+    final connection = _connection;
+    _connection = null;
+    connection?.close();
+    connection?.dispose();
   }
 
   void disconnect() {
     _autoReconnect = false;
     _reconnectTimer?.cancel();
-    _teardownSocket();
+    _teardownConnection();
     _current = ConnectionStatus.disconnected;
   }
 

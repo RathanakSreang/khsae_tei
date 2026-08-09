@@ -7,10 +7,9 @@ A "whip-app": swing your phone, it plays a whip sound and tells your desktop to 
 ## Status: MVP (Linux desktop only)
 
 - **mobile app** (Flutter) — detects the whip gesture via accelerometer, plays a sound, sends the signal.
-- **desktop app** (Python) — runs the WebSocket server the phone connects to over LAN, and simulates the Enter keypress.
-- **relay** (Node) — optional rendezvous server so the phone and desktop can pair over the internet when they're not on the same WiFi. Built and tested locally; not deployed anywhere public yet.
+- **desktop app** (Python) — runs the WebSocket server the phone connects to over LAN, registers a Bluetooth SPP service via BlueZ, and simulates the Enter keypress.
 
-Bluetooth and other desktop OSes are not built yet — see `docs/protocol.md` for the full wire protocol and `CHECKLIST.md` for what's done vs. outstanding.
+Other desktop OSes are not built yet — see `docs/protocol.md` for the full wire protocol and `CHECKLIST.md` for what's done vs. outstanding.
 
 ## Running it
 
@@ -25,9 +24,9 @@ uv pip install -r requirements.txt
 uv run main.py
 ```
 
-On Linux, key simulation uses `pynput`, which needs an X11 session (or, on Wayland, access to `/dev/uinput` — typically means being in the `input` group or running as root).
+On Linux, key simulation uses `pynput`, which needs an X11 session (or, on Wayland, access to `/dev/uinput` — typically means being in the `input` group or running as root). Bluetooth uses BlueZ over D-Bus (`dbus-next`), so a running `bluetoothd` is required for the Bluetooth path — the LAN path works fine without it.
 
-The terminal prints the desktop's LAN IP, port, a 6-digit pairing code, and an ASCII QR code encoding both. Type `h` for the list of commands (regenerate the pairing code, connect/disconnect an internet relay, quit). There's also an optional relay connection — see below.
+The terminal prints the desktop's LAN IP, port, a 6-digit pairing code, and an ASCII QR code encoding both, plus the Bluetooth adapter address once the SPP service is registered. Type `h` for the list of commands (regenerate the pairing code, quit).
 
 ### Mobile (`mobile/`)
 
@@ -42,29 +41,17 @@ flutter run         # on a physical Android device, same WiFi network as the des
 
 Connect the phone over USB with developer mode / USB debugging enabled (or use `flutter run -d <device-id>` with wireless debugging already paired via `adb pair`). The app needs camera access for QR scanning — accept the permission prompt on first launch.
 
-In the app, pick **LAN** or **Internet** mode:
+In the app, pick **LAN** or **Bluetooth** mode:
 - **LAN**: tap **Discover** (mDNS) or **Scan QR**, or type the IP/port/code shown on the desktop, then **Connect**.
-- **Internet**: enter the relay URL and the same pairing code, then **Connect**.
+- **Bluetooth**: pair the phone with the desktop from the phone's system Bluetooth settings first (like pairing a Bluetooth keyboard), then in-app tap **Refresh paired devices**, pick the desktop from the list, enter the pairing code shown on the desktop, then **Connect**.
 
 Once paired, tap **Test Whip** to confirm the round trip, or physically whip the phone.
-
-### Relay (`relay/`) — optional, for pairing over the internet
-
-```
-cd relay
-nvm use
-npm install
-npm start   # listens on port 9090 by default (PORT env var to override)
-```
-
-Then in the desktop terminal, type `c ws://<relay-host>:9090` (e.g. `c ws://localhost:9090` for local testing) — the desktop registers under its existing pairing code, and a phone can now reach it via that relay using the same code from anywhere, not just the same WiFi. Type `d` to disconnect. Not deployed anywhere public yet: this has only been run and tested on localhost so far. If you do deploy it publicly, put it behind TLS (`wss://`) — most hosting platforms do this for you automatically.
 
 ## Repo layout
 
 ```
-desktop/   Python app (WebSocket server + keypress simulation + relay client)
-mobile/    Flutter app (gesture detection + WebSocket client, LAN or relay)
-relay/     Rendezvous server for pairing over the internet
+desktop/   Python app (WebSocket server + Bluetooth SPP service + keypress simulation)
+mobile/    Flutter app (gesture detection + WebSocket/Bluetooth client)
 docs/      Wire protocol spec
 branding/  Logo / app icon source
 ```

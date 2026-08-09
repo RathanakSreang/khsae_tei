@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
+import 'package:flutter_classic_bluetooth/flutter_classic_bluetooth.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import 'discovery.dart';
 import 'qr_scan_screen.dart';
@@ -21,13 +23,16 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final _ipController = TextEditingController();
   final _portController = TextEditingController(text: '8787');
-  final _relayUrlController = TextEditingController();
   final _codeController = TextEditingController();
 
   ConnectionMode _mode = ConnectionMode.lan;
   ConnectionStatus _status = ConnectionStatus.disconnected;
   final List<String> _log = [];
   bool _discovering = false;
+
+  List<BtcDevice> _pairedDevices = [];
+  String? _selectedBtAddress;
+  bool _loadingPairedDevices = false;
 
   StreamSubscription<Map<String, dynamic>?>? _statusSub;
   StreamSubscription<Map<String, dynamic>?>? _eventSub;
@@ -64,7 +69,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _mode = saved.mode;
         _ipController.text = saved.ip;
         _portController.text = saved.port;
-        _relayUrlController.text = saved.relayUrl;
+        _selectedBtAddress = saved.btAddress.isEmpty ? null : saved.btAddress;
         _codeController.text = saved.code;
       });
     } catch (_) {
@@ -78,23 +83,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _eventSub?.cancel();
     _ipController.dispose();
     _portController.dispose();
-    _relayUrlController.dispose();
     _codeController.dispose();
     super.dispose();
+  }
+
+  /// Android 12+ requires runtime consent for Bluetooth scan/connect (the
+  /// plugin documents that it does not request these itself); older Android
+  /// additionally needs location for classic-Bluetooth device discovery.
+  Future<bool> _ensureBluetoothPermissions() async {
+    final statuses = await [
+      Permission.bluetoothScan,
+      Permission.bluetoothConnect,
+      Permission.locationWhenInUse,
+    ].request();
+    return statuses.values.every((s) => s.isGranted || s.isLimited);
+  }
+
+  Future<void> _loadPairedDevices() async {
+    setState(() => _loadingPairedDevices = true);
+    try {
+      if (!await _ensureBluetoothPermissions()) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Bluetooth permission is required to list paired devices.')),
+          );
+        }
+        return;
+      }
+      final devices = await FlutterClassicBluetooth().getPairedDevices();
+      if (mounted) setState(() => _pairedDevices = devices);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not list paired devices: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _loadingPairedDevices = false);
+    }
   }
 
   Future<void> _connect() async {
     final code = _codeController.text.trim();
     if (code.isEmpty) return;
     if (_mode == ConnectionMode.lan && _ipController.text.trim().isEmpty) return;
-    if (_mode == ConnectionMode.internet && _relayUrlController.text.trim().isEmpty) return;
+    if (_mode == ConnectionMode.bluetooth && (_selectedBtAddress ?? '').isEmpty) return;
 
     final config = ConnectionConfig(
       mode: _mode,
       ip: _ipController.text.trim(),
       port: _portController.text.trim(),
       code: code,
-      relayUrl: _relayUrlController.text.trim(),
+      btAddress: _selectedBtAddress ?? '',
     );
     await SettingsStore().save(config);
 
@@ -190,7 +228,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             SegmentedButton<ConnectionMode>(
               segments: const [
                 ButtonSegment(value: ConnectionMode.lan, label: Text('LAN')),
-                ButtonSegment(value: ConnectionMode.internet, label: Text('Internet')),
+                ButtonSegment(value: ConnectionMode.bluetooth, label: Text('Bluetooth')),
               ],
               selected: {_mode},
               onSelectionChanged: (s) => setState(() => _mode = s.first),
@@ -208,15 +246,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 decoration: const InputDecoration(labelText: 'Port'),
                 keyboardType: TextInputType.number,
               ),
-            ] else
-              TextField(
-                controller: _relayUrlController,
-                decoration: const InputDecoration(
-                  labelText: 'Relay URL',
-                  hintText: 'wss://your-relay-host',
-                ),
-                keyboardType: TextInputType.url,
+            ] else ...[
+              const Text(
+                'Pair with the desktop from your phone\'s Bluetooth settings '
+                'first, then refresh below to pick it.',
               ),
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: _loadingPairedDevices ? null : _loadPairedDevices,
+                child: Text(_loadingPairedDevices ? 'Loading...' : 'Refresh paired devices'),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                initialValue: _selectedBtAddress,
+                decoration: const InputDecoration(labelText: 'Paired device'),
+                items: _pairedDevices
+                    .map((d) => DropdownMenuItem(value: d.address, child: Text(d.displayName)))
+                    .toList(),
+                onChanged: (address) => setState(() => _selectedBtAddress = address),
+              ),
+            ],
             const SizedBox(height: 8),
             TextField(
               controller: _codeController,

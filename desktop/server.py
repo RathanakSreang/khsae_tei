@@ -19,6 +19,11 @@ class WhipServer:
         self.code = generate_code()
         self._listeners = []
         self._server = None
+        # send() callables for every currently paired session, across both
+        # LAN and Bluetooth (both funnel through create_session_handler) -
+        # lets push_event() reach whichever transport the phone is actually
+        # connected over without any transport-specific code.
+        self._paired_sends = set()
 
     def on_event(self, callback):
         self._listeners.append(callback)
@@ -44,6 +49,7 @@ class WhipServer:
         except ConnectionClosed:
             pass
         finally:
+            session["cleanup"]()
             if session["is_paired"]():
                 self._emit({"kind": "disconnected", "remote": remote})
 
@@ -75,6 +81,7 @@ class WhipServer:
                     })
                     return
                 state["paired"] = True
+                self._paired_sends.add(send)
                 await send({"type": "paired"})
                 self._emit({
                     "kind": "paired",
@@ -96,7 +103,20 @@ class WhipServer:
                         "error": str(err),
                     })
 
-        return {"handle_message": handle_message, "is_paired": lambda: state["paired"]}
+        def cleanup():
+            self._paired_sends.discard(send)
+
+        return {"handle_message": handle_message, "is_paired": lambda: state["paired"], "cleanup": cleanup}
+
+    async def push_event(self, msg):
+        """Sends an unsolicited server-initiated message (e.g. agent_waiting)
+        to every currently paired session. Swallows individual send errors so
+        one dead connection (not yet reaped) doesn't block the others."""
+        for send in list(self._paired_sends):
+            try:
+                await send(msg)
+            except Exception:
+                pass
 
     def regenerate_code(self):
         self.code = generate_code()

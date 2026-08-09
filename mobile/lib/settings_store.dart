@@ -1,6 +1,6 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
-enum ConnectionMode { lan, internet }
+enum ConnectionMode { lan, bluetooth }
 
 /// Everything needed to (re)connect to the desktop, persisted across app
 /// restarts so Settings is prefilled and the background service can
@@ -11,21 +11,21 @@ class ConnectionConfig {
     required this.ip,
     required this.port,
     required this.code,
-    required this.relayUrl,
+    required this.btAddress,
   });
 
   final ConnectionMode mode;
   final String ip;
   final String port;
   final String code;
-  final String relayUrl;
+  final String btAddress;
 
   Map<String, String> toMap() => {
     'mode': mode.name,
     'ip': ip,
     'port': port,
     'code': code,
-    'relayUrl': relayUrl,
+    'btAddress': btAddress,
   };
 
   static ConnectionConfig fromMap(Map<String, String> map) => ConnectionConfig(
@@ -36,12 +36,12 @@ class ConnectionConfig {
     ip: map['ip'] ?? '',
     port: map['port'] ?? '8787',
     code: map['code'] ?? '',
-    relayUrl: map['relayUrl'] ?? '',
+    btAddress: map['btAddress'] ?? '',
   );
 }
 
 class SettingsStore {
-  static const _keys = ['mode', 'ip', 'port', 'code', 'relayUrl'];
+  static const _keys = ['mode', 'ip', 'port', 'code', 'btAddress'];
 
   Future<ConnectionConfig?> load() async {
     final prefs = await SharedPreferences.getInstance();

@@ -6,11 +6,12 @@ import time
 import qrcode
 
 import discovery
+from agent_monitor.hub import AgentMonitorHub
+from bluetooth_server import BluetoothServer
 from net import get_lan_ip
-from relay_client import RelayClient
 from server import DEFAULT_PORT, WhipServer
 
-HELP_TEXT = "Commands: [r] regenerate code   [c <url>] connect relay   [d] disconnect relay   [h] help   [q] quit"
+HELP_TEXT = "Commands: [r] regenerate code   [h] help   [q] quit"
 
 
 def print_server_info(whip_server):
@@ -41,12 +42,18 @@ def log_event(event):
         message = f"Disconnected: {event.get('remote')}"
     elif kind == "code_regenerated":
         message = "Pairing code regenerated"
-    elif kind == "relay_connected":
-        message = f"Relay connected: {event.get('url')}"
-    elif kind == "relay_disconnected":
-        message = "Relay disconnected"
-    elif kind == "relay_error":
-        message = f"Relay error: {event.get('error')}"
+    elif kind == "bt_listening":
+        message = f"Bluetooth SPP registered on adapter {event.get('address')}"
+    elif kind == "bt_error":
+        message = f"Bluetooth unavailable: {event.get('error')}"
+    elif kind == "agent_hub_listening":
+        message = f"Agent monitor listening on {event.get('path')}"
+    elif kind == "agent_registered":
+        message = f"Agent registered: {event.get('label')} (pid {event.get('pid')}) in {event.get('workspace')}"
+    elif kind == "agent_state":
+        message = f"Agent {event.get('label')} -> {event.get('state')}"
+    elif kind == "agent_done":
+        message = f"Agent {event.get('label')} finished: {event.get('state')}"
     else:
         message = str(event)
     print(f"[{time.strftime('%H:%M:%S')}] {message}")
@@ -58,7 +65,7 @@ def stdin_reader_thread(loop, queue):
     loop.call_soon_threadsafe(queue.put_nowait, "q")
 
 
-async def command_loop(queue, whip_server, relay_client):
+async def command_loop(queue, whip_server):
     while True:
         cmd = await queue.get()
         if cmd in ("q", "quit", "exit"):
@@ -66,13 +73,6 @@ async def command_loop(queue, whip_server, relay_client):
         elif cmd in ("r", "regen"):
             whip_server.regenerate_code()
             print_server_info(whip_server)
-        elif cmd.startswith("c "):
-            url = cmd[2:].strip()
-            if url:
-                print(f"Connecting to relay {url} ...")
-                relay_client.connect(url)
-        elif cmd == "d":
-            relay_client.disconnect()
         elif cmd in ("h", "help", "?"):
             print(HELP_TEXT)
         elif cmd:
@@ -83,11 +83,16 @@ async def main():
     whip_server = WhipServer(DEFAULT_PORT)
     whip_server.on_event(log_event)
 
-    relay_client = RelayClient(whip_server)
-    relay_client.on_event(log_event)
+    bluetooth_server = BluetoothServer(whip_server)
+    bluetooth_server.on_event(log_event)
+
+    agent_hub = AgentMonitorHub(whip_server)
+    agent_hub.on_event(log_event)
 
     await whip_server.start()
     discovery.advertise(whip_server.port)
+    await bluetooth_server.start()
+    await agent_hub.start()
 
     print("=" * 50)
     print(" KHSAE TEI desktop")
@@ -100,10 +105,11 @@ async def main():
     threading.Thread(target=stdin_reader_thread, args=(loop, queue), daemon=True).start()
 
     try:
-        await command_loop(queue, whip_server, relay_client)
+        await command_loop(queue, whip_server)
     finally:
         discovery.stop()
-        relay_client.disconnect()
+        await agent_hub.stop()
+        await bluetooth_server.stop()
         await whip_server.stop()
 
 

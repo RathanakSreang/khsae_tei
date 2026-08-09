@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
+import 'bt_client.dart';
 import 'settings_store.dart';
 import 'sound_player.dart';
 import 'whip_detector.dart';
@@ -57,14 +58,10 @@ Future<void> requestNotificationPermission() async {
       ?.requestNotificationsPermission();
 }
 
-Uri? _buildUri(ConnectionConfig config) {
-  if (config.mode == ConnectionMode.lan) {
-    if (config.ip.isEmpty) return null;
-    final port = int.tryParse(config.port) ?? 8787;
-    return Uri(scheme: 'ws', host: config.ip, port: port);
-  }
-  if (config.relayUrl.isEmpty) return null;
-  return Uri.tryParse(config.relayUrl);
+Uri? _buildLanUri(ConnectionConfig config) {
+  if (config.ip.isEmpty) return null;
+  final port = int.tryParse(config.port) ?? 8787;
+  return Uri(scheme: 'ws', host: config.ip, port: port);
 }
 
 String _statusLabel(ConnectionStatus status) {
@@ -88,6 +85,7 @@ void onStart(ServiceInstance service) async {
   DartPluginRegistrant.ensureInitialized();
 
   final client = WsClient();
+  final btClient = BtClient();
   final soundPlayer = SoundPlayer();
   final whipDetector = WhipDetector();
   final settingsStore = SettingsStore();
@@ -99,16 +97,46 @@ void onStart(ServiceInstance service) async {
     }
   }
 
+  // Both transports are wired up permanently rather than swapped in and out
+  // per-mode - only whichever one connect() is actually called on will ever
+  // emit anything, so this stays simple without extra subscription juggling.
   client.status.listen((status) {
     service.invoke('statusUpdate', {'status': status.name});
     updateNotification(_statusLabel(status));
   });
   client.events.listen((event) => service.invoke('logEvent', {'message': event}));
-  client.onAck.listen((_) => soundPlayer.playSuccess());
+  btClient.status.listen((status) {
+    service.invoke('statusUpdate', {'status': status.name});
+    updateNotification(_statusLabel(status));
+  });
+  btClient.events.listen((event) => service.invoke('logEvent', {'message': event}));
+
+  void sendWhip() {
+    if (currentConfig?.mode == ConnectionMode.bluetooth) {
+      btClient.sendWhip();
+    } else {
+      client.sendWhip();
+    }
+  }
+
+  void connectCurrent() {
+    final config = currentConfig;
+    if (config == null) return;
+    if (config.mode == ConnectionMode.bluetooth) {
+      client.disconnect();
+      if (config.btAddress.isEmpty) return;
+      btClient.connect(config.btAddress, config.code, 'KHSAE TEI Phone');
+    } else {
+      btClient.disconnect();
+      final uri = _buildLanUri(config);
+      if (uri == null) return;
+      client.connect(uri, config.code, 'KHSAE TEI Phone');
+    }
+  }
 
   whipDetector.onWhip.listen((_) {
     soundPlayer.playWhip();
-    client.sendWhip();
+    sendWhip();
   });
   whipDetector.start();
 
@@ -119,20 +147,18 @@ void onStart(ServiceInstance service) async {
     await settingsStore.save(config);
   });
 
-  service.on('connect').listen((_) {
-    final config = currentConfig;
-    if (config == null) return;
-    final uri = _buildUri(config);
-    if (uri == null) return;
-    client.connect(uri, config.code, 'KHSAE TEI Phone');
-  });
+  service.on('connect').listen((_) => connectCurrent());
 
-  service.on('disconnect').listen((_) => client.disconnect());
-  service.on('testWhip').listen((_) => client.sendWhip());
+  service.on('disconnect').listen((_) {
+    client.disconnect();
+    btClient.disconnect();
+  });
+  service.on('testWhip').listen((_) => sendWhip());
 
   service.on('stopService').listen((_) async {
     whipDetector.dispose();
     client.dispose();
+    btClient.dispose();
     soundPlayer.dispose();
     await service.stopSelf();
   });
@@ -141,9 +167,5 @@ void onStart(ServiceInstance service) async {
   // Settings first - if we have a config from a previous session, resume
   // it automatically instead of leaving the user connectionless.
   currentConfig = await settingsStore.load();
-  final savedConfig = currentConfig;
-  if (savedConfig != null) {
-    final uri = _buildUri(savedConfig);
-    if (uri != null) client.connect(uri, savedConfig.code, 'KHSAE TEI Phone');
-  }
+  if (currentConfig != null) connectCurrent();
 }
