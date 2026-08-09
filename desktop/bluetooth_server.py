@@ -5,7 +5,6 @@ import socket
 from dbus_next import BusType, Variant
 from dbus_next.aio import MessageBus
 from dbus_next.service import ServiceInterface, method
-from dbus_next.errors import DBusError
 
 SPP_UUID = "00001101-0000-1000-8000-00805f9b34fb"
 PROFILE_PATH = "/org/khsaetei/profile"
@@ -85,7 +84,11 @@ class BluetoothServer:
                 },
             )
             self._emit({"kind": "bt_listening", "address": self._adapter_address})
-        except (DBusError, OSError) as err:
+        except Exception as err:
+            # Bluetooth is best-effort, same as mDNS in discovery.py - no
+            # adapter, bluetoothd not running, or a dbus-next/BlueZ
+            # introspection quirk (e.g. InterfaceNotFoundError, which isn't
+            # a DBusError) must never take the LAN server down with it.
             self._emit({"kind": "bt_error", "error": str(err)})
 
     async def _profile_manager(self):
@@ -138,7 +141,7 @@ class BluetoothServer:
             try:
                 profile_manager = await self._profile_manager()
                 await profile_manager.call_unregister_profile(PROFILE_PATH)
-            except (DBusError, OSError):
+            except Exception:
                 pass
             self._bus.disconnect()
             self._bus = None
