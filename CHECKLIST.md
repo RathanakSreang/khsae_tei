@@ -1,6 +1,6 @@
 # KHSAE TEI — Progress Checklist
 
-Status snapshot of the MVP (LAN or Bluetooth, Linux desktop only) described in `docs/protocol.md`.
+Status snapshot of the MVP (LAN only, Linux desktop only) described in `docs/protocol.md`.
 
 ## Done
 
@@ -22,17 +22,11 @@ Status snapshot of the MVP (LAN or Bluetooth, Linux desktop only) described in `
 - [x] Mobile: success sound (cow moo, randomly picked from 3 clips) plays when the desktop actually acks the whip — i.e. confirms the command landed, not just that it was sent; plays on its own audio player so it doesn't cut off an in-flight whip-crack sound
 - [x] Mobile: mDNS auto-discovery ("Discover" button)
 - [x] Mobile: QR-code scan-to-pair flow
-- [x] Mobile: AndroidManifest permissions wired (INTERNET, CAMERA, CHANGE_WIFI_MULTICAST_STATE, cleartext traffic for `ws://`, plus the Bluetooth scan/connect permissions listed below)
+- [x] Mobile: AndroidManifest permissions wired (INTERNET, CAMERA, CHANGE_WIFI_MULTICAST_STATE, cleartext traffic for `ws://`)
 - [x] `flutter analyze` clean, `flutter test` passing (widget smoke test)
 - [x] Initial commit pushed to `origin/master`
-- [x] **Bluetooth Classic (RFCOMM/SPP) transport** — replaces the internet relay as the second way to reach the desktop when not on the same LAN, using the exact same pairing code as LAN mode
-  - [x] Desktop: `bluetooth_server.py` — registers a standard Serial Port Profile with BlueZ over D-Bus (`dbus-next`, `org.bluez.ProfileManager1.RegisterProfile`), so the phone finds the RFCOMM channel via SDP the same way `flutter_classic_bluetooth`'s `connect()` looks it up (no hardcoded channel on either side); reuses the exact same hello/whip/ack session logic as the LAN server (`WhipServer.create_session_handler`), framed as newline-delimited JSON since RFCOMM is a raw byte stream
-  - [x] Desktop: registers/deregisters the SPP profile alongside the LAN server and mDNS advertisement in `main.py`; prints the Bluetooth adapter address at startup
-  - [x] Mobile: LAN/Bluetooth mode switch on the pairing screen; Bluetooth mode lists paired devices (`FlutterClassicBluetooth.getPairedDevices()`) to pick the desktop from, then connects via `bt_client.dart` (same public shape as `WsClient`, same hello/paired/ack/error state machine)
-  - [x] Mobile: runtime Bluetooth permission requests (`permission_handler`) for Android 12+ scan/connect and legacy location, plus manifest permissions split by SDK version
-  - [x] `docs/protocol.md` — Bluetooth transport section (SPP UUID/SDP registration, that OS-level bonding is a separate prerequisite from the app's pairing-code handshake, newline-delimited framing)
-  - [x] Removed the internet relay entirely (`relay/` package, `desktop/relay_client.py`, the mobile Internet mode/relay URL field) — it was never deployed anywhere public, only built and tested locally
-  - [ ] Not yet verified on real hardware (no Bluetooth-equipped Linux desktop + Android phone available during implementation) — needs the same kind of on-device pass already done for LAN/relay: real bonding, `RegisterProfile` actually succeeding against a live `bluetoothd`, and a real whip → keypress round trip over RFCOMM
+- [x] Removed the internet relay entirely (`relay/` package, `desktop/relay_client.py`, the mobile Internet mode/relay URL field) — it was never deployed anywhere public, only built and tested locally
+- Historical: a Bluetooth Classic (RFCOMM/SPP) transport (`desktop/bluetooth_server.py`, BlueZ D-Bus SPP profile registration, `mobile/lib/bt_client.dart`, `flutter_classic_bluetooth`) was built as the LAN-alternative in place of the relay, then removed entirely (2026-08-09) as a product decision — LAN is the only transport now.
 - [x] **App icons / branding** — `branding/khsae_tei_logo.png` (provided) is now the source of truth for app icons
   - [x] Android launcher icons regenerated at all 5 densities (mdpi–xxxhdpi) from the logo; confirmed rendering correctly on a real device (2026-08-06)
   - [x] Desktop: `desktop/assets/icon.png` (512×512) kept as the branding source; unused since the Python rewrite has no window to attach an icon to
@@ -40,7 +34,7 @@ Status snapshot of the MVP (LAN or Bluetooth, Linux desktop only) described in `
 - [x] **On-device verification pass (2026-08-06, real Galaxy Note20, Android 13)**:
   - [x] LAN manual pairing (IP/port/code entry) → paired → whip → real Enter keypress simulated on desktop, confirmed via desktop log
   - [x] QR-code scan-to-pair flow — camera scan correctly filled fields and connected
-  - [x] Internet/relay pairing flow through the actual mobile UI (not just a scripted client) — paired via a local relay instance, whip → ack round trip confirmed. Historical: the relay was subsequently removed entirely and replaced with the Bluetooth transport above.
+  - [x] Internet/relay pairing flow through the actual mobile UI (not just a scripted client) — paired via a local relay instance, whip → ack round trip confirmed. Historical: the relay was subsequently removed entirely (briefly replaced with a Bluetooth transport, which was itself later removed too — see above).
   - [x] Accelerometer whip detection — tuned from real on-device magnitude data (see below), confirmed a real whip motion now triggers correctly (sound + event) at the new threshold
   - [x] Found and fixed real bugs along the way (not pre-existing knowledge, discovered during this pass):
     - Android silently drops incoming mDNS/multicast packets over WiFi unless the app holds a `WifiManager.MulticastLock`; the `multicast_dns` package never acquires one. Added a small native platform channel (`MainActivity.kt` + `discovery.dart`) to acquire/release it around each discovery call.
@@ -49,13 +43,9 @@ Status snapshot of the MVP (LAN or Bluetooth, Linux desktop only) described in `
     - Whip threshold was an untuned guess (30 m/s²) that real swings never reached (measured peaks: 10.2–23.5 m/s²). Retuned to 15.0 m/s² from that data.
   - [ ] mDNS **Discover** button specifically: fixed the multicast-lock bug above, but on the test WiFi network the desktop's own multicast advertisement never reached the phone at all (raw socket sniff confirmed zero packets arrive), while regular unicast (LAN pairing, relay) worked fine after a brief delay. This looks like router-level multicast filtering (common on consumer/mesh APs, distinct from full AP client isolation) rather than an app bug — manual entry and QR scan are the confirmed-working fallbacks on networks like this one, exactly as `docs/protocol.md` already assumes. Still needs verification on a network without this restriction.
   - [ ] Walking/pocket-jostling false-positive tuning specifically wasn't captured cleanly this pass (data collection kept getting confounded with grip-adjustment noise); the 15.0 m/s² threshold is a real improvement over the untuned 30.0 default but hasn't been stress-tested against a dedicated "normal handling only" baseline yet.
-- [x] **Two-screen app + background-surviving connection (2026-08-06)** — Home (`home_screen.dart`, minimal dashboard: branding, status, Start/Stop) and Settings (`settings_screen.dart`, connection config + Test Whip + event log), navigated via a bottom `NavigationBar`/`IndexedStack` shell (`app_shell.dart`)
-  - [x] The live `WsClient`/`WhipDetector`/`SoundPlayer` moved out of the UI into a `flutter_background_service` foreground-service isolate (`background_service.dart`), so the connection and gesture detection keep running independent of any screen being open
-  - [x] Notification kept as unobtrusive as Android allows for a true foreground service: `Importance.low`, no sound/vibration/badge (Android requires _some_ notification for indefinite background work — there's no way around that)
-  - [x] Connection settings persisted via `shared_preferences` (`settings_store.dart`) — Settings is prefilled and the service can reconnect on its own after a restart
-  - [x] "Disable battery optimization for this app" button in Settings (`MainActivity.kt` platform channel, `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`) — added because OEM battery managers (confirmed on this same Samsung device) throttle background services that aren't exempted, regardless of the foreground-service notification
-  - [x] Verified end-to-end on the real Galaxy Note20: started from Home (silent notification appears, confirmed via `dumpsys notification`), connected from Settings, backgrounded the app (confirmed the process + foreground service survive via `dumpsys activity services`), did a **real whip motion with the app fully backgrounded** — sound played and the desktop received it, Stop cleanly tears down the service (notification disappears), settings correctly prefill after a full force-stop + relaunch
-  - [ ] iOS not touched (Android-only scope, see below); boot-persistence (`autoStartOnBoot`) deliberately left off — "runs until user stops it" was read as a user-initiated start each session, not surviving a reboot
+- [x] **Two-screen app** (2026-08-06) — Home (`home_screen.dart`, minimal dashboard: branding, status, Start/Stop) and Settings (`settings_screen.dart`, connection config + Test Whip + event log), navigated via a bottom `NavigationBar`/`IndexedStack` shell (`app_shell.dart`)
+  - [x] Connection settings persisted via `shared_preferences` (`settings_store.dart`) — Settings is prefilled on restart
+  - Historical: a `flutter_background_service` foreground-service isolate (`background_service.dart`) briefly moved the live `WsClient`/`WhipDetector`/`SoundPlayer` out of the UI so detection/connection survived backgrounding, verified end-to-end on a real Galaxy Note20 (silent low-importance notification, survived backgrounding, real whip motion while backgrounded worked, clean teardown on Stop). Removed entirely (2026-08-09, "no need for now") — `WsClient`/`WhipDetector`/`SoundPlayer` now live directly in the UI process via a `WhipController` singleton (`lib/whip_controller.dart`); detection and the connection only run while the app is open. The "Disable battery optimization" button and its `MainActivity.kt` platform-channel handler were removed alongside it (its only purpose was protecting the now-gone foreground service).
 
 ## Not done yet
 
@@ -63,7 +53,7 @@ Explicitly deferred / out of MVP scope:
 
 - [ ] Windows/macOS desktop support (`pynput` is cross-platform-capable but untested outside Linux)
 - [ ] Any kind of desktop GUI/tray icon (currently a plain terminal script; deliberately dropped the Electron window)
-- [ ] TLS/WSS for the LAN path (plain `ws://`, acceptable for the LAN-only threat model — LAN and Bluetooth are both local-only now that the internet relay is gone, so there's no public-facing leg needing TLS)
+- [ ] TLS/WSS for the LAN path (plain `ws://`, acceptable for the LAN-only threat model — LAN is the only transport now that the internet relay and Bluetooth are both gone, so there's no public-facing leg needing TLS)
 
 Polish / production-readiness, not started:
 

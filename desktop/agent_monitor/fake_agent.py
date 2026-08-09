@@ -1,6 +1,6 @@
 """A tiny scripted stand-in for a real coding agent CLI, used to prove the
-supervisor -> hub -> prompt_detector -> WebSocket/Bluetooth chain end-to-end
-without needing Claude/Codex installed. Run it through the supervisor:
+supervisor -> hub -> prompt_detector -> WebSocket chain end-to-end without
+needing Claude/Codex installed. Run it through the supervisor:
 
     python3 -m agent_monitor.supervisor python3 agent_monitor/fake_agent.py
 """

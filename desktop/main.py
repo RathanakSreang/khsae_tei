@@ -7,7 +7,6 @@ import qrcode
 
 import discovery
 from agent_monitor.hub import AgentMonitorHub
-from bluetooth_server import BluetoothServer
 from net import get_lan_ip
 from server import DEFAULT_PORT, WhipServer
 
@@ -42,10 +41,6 @@ def log_event(event):
         message = f"Disconnected: {event.get('remote')}"
     elif kind == "code_regenerated":
         message = "Pairing code regenerated"
-    elif kind == "bt_listening":
-        message = f"Bluetooth SPP registered on adapter {event.get('address')}"
-    elif kind == "bt_error":
-        message = f"Bluetooth unavailable: {event.get('error')}"
     elif kind == "agent_hub_listening":
         message = f"Agent monitor listening on {event.get('path')}"
     elif kind == "agent_registered":
@@ -83,15 +78,11 @@ async def main():
     whip_server = WhipServer(DEFAULT_PORT)
     whip_server.on_event(log_event)
 
-    bluetooth_server = BluetoothServer(whip_server)
-    bluetooth_server.on_event(log_event)
-
     agent_hub = AgentMonitorHub(whip_server)
     agent_hub.on_event(log_event)
 
     await whip_server.start()
     discovery.advertise(whip_server.port)
-    await bluetooth_server.start()
     await agent_hub.start()
 
     print("=" * 50)
@@ -109,7 +100,6 @@ async def main():
     finally:
         discovery.stop()
         await agent_hub.stop()
-        await bluetooth_server.stop()
         await whip_server.stop()
 
 

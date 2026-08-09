@@ -2,5 +2,4 @@ websockets>=12.0
 zeroconf>=0.131.0
 qrcode>=7.4.2
 pynput>=1.7.6
-dbus-next>=0.2.3
 pyte>=0.8.2

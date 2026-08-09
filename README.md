@@ -7,7 +7,7 @@ A "whip-app": swing your phone, it plays a whip sound and tells your desktop to 
 ## Status: MVP (Linux desktop only)
 
 - **mobile app** (Flutter) — detects the whip gesture via accelerometer, plays a sound, sends the signal.
-- **desktop app** (Python) — runs the WebSocket server the phone connects to over LAN, registers a Bluetooth SPP service via BlueZ, and simulates the Enter keypress.
+- **desktop app** (Python) — runs the WebSocket server the phone connects to over LAN, and simulates the Enter keypress.
 
 Other desktop OSes are not built yet — see `docs/protocol.md` for the full wire protocol and `CHECKLIST.md` for what's done vs. outstanding.
 
@@ -34,7 +34,6 @@ The desktop app is the part that receives the whip signal and presses Enter. It'
   ```
   curl -LsSf https://astral.sh/uv/install.sh | sh
   ```
-- **A running Bluetooth daemon (`bluetoothd`)** if you want the Bluetooth pairing path — optional, the LAN path works without it.
 
 **2. Set up and run**
 
@@ -59,14 +58,12 @@ Once running, the terminal prints:
 - the desktop's LAN IP and port (default `8787`)
 - a 6-digit pairing code
 - an ASCII QR code encoding both, for the mobile app's **Scan QR** button
-- the Bluetooth adapter address, once the SPP service registers (Bluetooth path only)
 
 Type `h` at any time for the list of in-terminal commands (regenerate the pairing code, quit). Keep this terminal open — the app only works while it's running.
 
 **5. Troubleshooting**
 
 - *Nothing happens when the desktop receives a whip* — confirm the terminal shows a `paired` event when the phone connects (not just `hello`); if the pairing code was wrong you'll see an `invalid_code` error instead.
-- *Bluetooth path never shows a device address* — check `bluetoothd` is actually running (`systemctl status bluetooth`); the LAN path is independent and doesn't need this.
 - *Enter doesn't get pressed* — you're most likely on Wayland without `/dev/uinput` access; see step 3.
 
 ### Mobile (`mobile/`)
@@ -82,17 +79,15 @@ flutter run         # on a physical Android device, same WiFi network as the des
 
 Connect the phone over USB with developer mode / USB debugging enabled (or use `flutter run -d <device-id>` with wireless debugging already paired via `adb pair`). The app needs camera access for QR scanning — accept the permission prompt on first launch.
 
-In the app, pick **LAN** or **Bluetooth** mode:
-- **LAN**: tap **Discover** (mDNS) or **Scan QR**, or type the IP/port/code shown on the desktop, then **Connect**.
-- **Bluetooth**: pair the phone with the desktop from the phone's system Bluetooth settings first (like pairing a Bluetooth keyboard), then in-app tap **Refresh paired devices**, pick the desktop from the list, enter the pairing code shown on the desktop, then **Connect**.
+In the app's Settings tab, tap **Discover** (mDNS) or **Scan QR**, or type the IP/port/code shown on the desktop, then **Connect**. Once paired, tap **Test Whip** to confirm the round trip, or physically whip the phone.
 
-Once paired, tap **Test Whip** to confirm the round trip, or physically whip the phone.
+Whip detection and the connection only run while the app is open (foreground) — there's no background service, so backgrounding or closing the app stops both.
 
 ## Repo layout
 
 ```
-desktop/   Python app (WebSocket server + Bluetooth SPP service + keypress simulation)
-mobile/    Flutter app (gesture detection + WebSocket/Bluetooth client)
+desktop/   Python app (WebSocket server + keypress simulation)
+mobile/    Flutter app (gesture detection + WebSocket client)
 docs/      Wire protocol spec
 branding/  Logo / app icon source
 ```

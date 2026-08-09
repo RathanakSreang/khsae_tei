@@ -37,40 +37,10 @@ accept a build.
   **Back up that keystore file + passwords somewhere durable — losing it
   means you can never update the app under this listing again.**
 - [ ] **Privacy policy hosted at a public URL.** Both stores require one
-  because the app requests camera/Bluetooth/location/notifications. Draft
-  text is below — host it anywhere (GitHub Pages, a gist rendered as a
-  page, a simple static site) and give me the URL to drop into the store
-  listing metadata below.
-- [ ] **Decide on Bluetooth mode's Android story.** It's currently hidden
-  app-wide (`_bluetoothEnabled = false` in `settings_screen.dart`) because
-  it's genuinely broken on iOS (Apple's MFi restriction) and on a macOS
-  desktop (no BlueZ). On Android + a Linux desktop it actually works. Two
-  options before submitting:
-  - Re-enable it for Android only (`Platform.isAndroid && _bluetoothEnabled`),
-    which keeps a real justification for the `FOREGROUND_SERVICE_CONNECTED_DEVICE`
-    permission and the Bluetooth permissions already in the manifest.
-  - Leave it off everywhere and strip the now-unused Bluetooth permissions
-    (`BLUETOOTH_SCAN`, `BLUETOOTH_CONNECT`, `BLUETOOTH`, `BLUETOOTH_ADMIN`,
-    `ACCESS_FINE_LOCATION`) plus reconsider the foreground service type,
-    since "LAN only" is a weaker fit for "connected device."
-  I haven't picked one for you — this changes what the app can actually do.
-
-## Real risk, not strictly blocking
-
-Google Play actively scrutinizes these two and can reject the app if the
-declared justification doesn't hold up on review:
-
-- **`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`** — a restricted permission.
-  Suggested justification for the Play Console declaration form: *"The app
-  runs a foreground service that must maintain a continuous low-latency
-  connection to a paired desktop for real-time gesture-triggered input
-  events; OEM battery managers otherwise throttle the service and silently
-  break that connection."*
-- **`FOREGROUND_SERVICE_CONNECTED_DEVICE`** — see the Bluetooth decision
-  above. If Bluetooth stays off everywhere, `dataSync` is a more defensible
-  foreground service type than `connectedDevice` for a LAN-only app; that's
-  a one-line change in both `AndroidManifest.xml` and `background_service.dart`
-  if you want it.
+  because the app requests camera/local-network access. Draft text is below
+  — host it anywhere (GitHub Pages, a gist rendered as a page, a simple
+  static site) and give me the URL to drop into the store listing metadata
+  below.
 
 ## Done
 
@@ -103,8 +73,6 @@ declared justification doesn't hold up on review:
 > - Pairs with your desktop over your local WiFi network with a one-time
 >   pairing code
 > - Scan a QR code or auto-discover the desktop on your network
-> - Runs quietly in the background so detection keeps working while your
->   phone is on
 > - No cloud, no accounts — the phone and desktop talk directly over your
 >   own LAN
 >
@@ -124,20 +92,13 @@ policy field.
 > KHSAE TEI does not collect, store, or transmit any personal data to us or
 > to any third party. The app communicates directly with a companion
 > desktop application over your local network only — nothing leaves your
-> WiFi network or Bluetooth connection.
+> WiFi network.
 >
 > **Permissions we ask for, and why:**
 > - **Camera** — to scan the QR code the desktop app displays for pairing.
 >   Never used for anything else; no images are stored or transmitted.
 > - **Local network access** — to discover the desktop app on your WiFi
 >   network (mDNS) and connect to it.
-> - **Bluetooth** *(Android only, if enabled)* — to connect to the desktop
->   app over Bluetooth as an alternative to WiFi.
-> - **Location** *(Android only, if Bluetooth is enabled)* — required by
->   Android to list nearby Bluetooth devices; not used to determine or
->   record your actual location.
-> - **Notifications** — to show the required persistent notification while
->   the background connection service is running.
 >
 > We do not use analytics, advertising, or crash-reporting SDKs. We do not
 > have a server, a database, or an account system — there is nothing for us
@@ -174,13 +135,14 @@ match.
 ## Final pre-submission checklist
 
 - [ ] Resolve the two blocking signing items above
-- [ ] Resolve the Bluetooth/Android decision above
 - [ ] Host the privacy policy, get a URL, fill in date + contact email
 - [ ] Re-capture screenshots at the exact sizes each store currently requires
 - [ ] `flutter build appbundle --release` (Android) and an Xcode Archive
   (iOS) — neither has been run in this environment (no Android SDK
   installed here, and iOS release archiving needs a Distribution
   certificate that doesn't exist yet)
-- [ ] Fill in Play Console's Bluetooth permission declaration + battery
-  optimization justification if Bluetooth stays enabled on Android
+- [ ] Run `pod install` in `mobile/ios/` on a Mac before the next iOS build
+  — `Podfile.lock` still references `flutter_background_service_ios` and
+  other now-removed pods; it can only be regenerated with CocoaPods on
+  macOS, not from this environment
 - [ ] Bump `version:` in `pubspec.yaml` if this isn't truly `1.0.0+1`

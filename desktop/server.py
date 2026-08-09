@@ -19,9 +19,8 @@ class WhipServer:
         self.code = generate_code()
         self._listeners = []
         self._server = None
-        # send() callables for every currently paired session, across both
-        # LAN and Bluetooth (both funnel through create_session_handler) -
-        # lets push_event() reach whichever transport the phone is actually
+        # send() callables for every currently paired session - lets
+        # push_event() reach whichever session the phone is actually
         # connected over without any transport-specific code.
         self._paired_sends = set()
 

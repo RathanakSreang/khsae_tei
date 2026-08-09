@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 
 import 'app_shell.dart';
-import 'background_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await initializeBackgroundService();
   runApp(const KhsaeTeiApp());
 }
 

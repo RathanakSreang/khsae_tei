@@ -1,11 +1,7 @@
 package com.khsaetei.khsae_tei
 
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import android.net.wifi.WifiManager
-import android.os.PowerManager
-import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -30,19 +26,6 @@ class MainActivity : FlutterActivity() {
                 }
                 "release" -> {
                     lock?.let { if (it.isHeld) it.release() }
-                    result.success(null)
-                }
-                "requestIgnoreBatteryOptimizations" -> {
-                    // Without this, OEM battery managers (Samsung especially,
-                    // confirmed by testing) throttle the background service
-                    // regardless of the foreground-service notification.
-                    val powerManager = applicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager
-                    if (!powerManager.isIgnoringBatteryOptimizations(applicationContext.packageName)) {
-                        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                            data = Uri.parse("package:${applicationContext.packageName}")
-                        }
-                        startActivity(intent)
-                    }
                     result.success(null)
                 }
                 else -> result.notImplemented()

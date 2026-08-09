@@ -1,11 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_background_service/flutter_background_service.dart';
 
-import 'background_service.dart';
 import 'settings_store.dart';
 import 'theme.dart';
+import 'whip_controller.dart';
 import 'ws_client.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -19,37 +18,16 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _running = false;
   bool _busy = false;
   ConnectionStatus _status = ConnectionStatus.disconnected;
-  StreamSubscription<Map<String, dynamic>?>? _statusSub;
+  StreamSubscription<ConnectionStatus>? _statusSub;
 
   @override
   void initState() {
     super.initState();
-    // The background-service platform channel isn't available outside a
-    // real Android/iOS run (e.g. plain widget tests) - degrade to "not
-    // running" rather than crashing the screen.
-    try {
-      _statusSub = FlutterBackgroundService().on('statusUpdate').listen((event) {
-        final name = event?['status'] as String?;
-        final status = ConnectionStatus.values.firstWhere(
-          (s) => s.name == name,
-          orElse: () => ConnectionStatus.disconnected,
-        );
-        if (mounted) setState(() => _status = status);
-      });
-      _refreshRunning();
-    } catch (_) {
-      // No platform implementation available; stay in the default state.
-    }
+    _statusSub = WhipController().status.listen((status) {
+      if (mounted) setState(() => _status = status);
+    });
+    _running = WhipController().running;
     SettingsStore().loadSoundEnabled().then((enabled) => soundEnabledNotifier.value = enabled);
-  }
-
-  Future<void> _refreshRunning() async {
-    try {
-      final running = await FlutterBackgroundService().isRunning();
-      if (mounted) setState(() => _running = running);
-    } catch (_) {
-      // No platform implementation available; stay in the default state.
-    }
   }
 
   @override
@@ -62,14 +40,13 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _busy = true);
     try {
       if (_running) {
-        FlutterBackgroundService().invoke('stopService');
+        WhipController().stop();
         setState(() {
           _running = false;
           _status = ConnectionStatus.disconnected;
         });
       } else {
-        await requestNotificationPermission();
-        await FlutterBackgroundService().startService();
+        await WhipController().start();
         setState(() => _running = true);
       }
     } finally {

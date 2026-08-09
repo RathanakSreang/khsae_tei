@@ -33,8 +33,8 @@ class AgentMonitorHub:
     processes (one per coding-agent instance the user has wrapped), tracks a
     small state machine per agent, and pushes a phone-facing event through
     the existing WhipServer whenever an agent transitions into a waiting
-    state. Mirrors the on_event/_emit shape of WhipServer/BluetoothServer for
-    consistency with the rest of desktop/."""
+    state. Mirrors the on_event/_emit shape of WhipServer for consistency
+    with the rest of desktop/."""
 
     def __init__(self, whip_server):
         self.whip_server = whip_server
