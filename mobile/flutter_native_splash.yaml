@@ -1,0 +1,17 @@
+flutter_native_splash:
+  color: "#0d2334"
+  # Splash shows this at native pixel size (no OS masking like app icons
+  # get), so it needs real rounded corners baked in or it reads as a
+  # screenshot pasted on a solid background instead of a logo tile.
+  image: assets/branding/generated/icon_rounded.png
+
+  android_12:
+    color: "#0d2334"
+    # Android 12+'s splash API masks the branding image into a circular
+    # safe zone the same way adaptive icons do, so reuse the padded
+    # foreground rather than the full card (which would get clipped).
+    image: assets/branding/generated/icon_adaptive_fg.png
+
+  android: true
+  ios: true
+  web: false

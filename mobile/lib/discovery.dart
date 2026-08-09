@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/services.dart';
 import 'package:multicast_dns/multicast_dns.dart';
 
@@ -18,8 +20,9 @@ class MdnsDiscovery {
     final results = <DiscoveredService>[];
     // Android silently drops incoming multicast (mDNS reply) packets over
     // WiFi unless a MulticastLock is held - without this, queries go out
-    // fine but responses never arrive back.
-    await _lockChannel.invokeMethod('acquire');
+    // fine but responses never arrive back. iOS has no such restriction and
+    // no native handler for this channel, so skip it there.
+    if (Platform.isAndroid) await _lockChannel.invokeMethod('acquire');
     await client.start();
     try {
       await for (final ptr in client
@@ -37,7 +40,7 @@ class MdnsDiscovery {
       }
     } finally {
       client.stop();
-      await _lockChannel.invokeMethod('release');
+      if (Platform.isAndroid) await _lockChannel.invokeMethod('release');
     }
     return results;
   }

@@ -11,11 +11,32 @@ A "whip-app": swing your phone, it plays a whip sound and tells your desktop to 
 
 Other desktop OSes are not built yet — see `docs/protocol.md` for the full wire protocol and `CHECKLIST.md` for what's done vs. outstanding.
 
+## Get the code
+
+```
+git clone git@github.com:RathanakSreang/khsae_tei.git
+cd khsae_tei
+```
+
+(Use `https://github.com/RathanakSreang/khsae_tei.git` instead if you haven't got an SSH key set up with GitHub.) Everything below assumes you're in this cloned `khsae_tei/` directory.
+
 ## Running it
 
-### Desktop (`desktop/`)
+### Desktop (`desktop/`) — full setup walkthrough
 
-Requires Python 3.10+ and [uv](https://docs.astral.sh/uv/).
+The desktop app is the part that receives the whip signal and presses Enter. It's a plain Python terminal script — no GUI, no install step beyond its dependencies.
+
+**1. Prerequisites**
+
+- **Linux** (the only OS currently supported — see the status note above). Tested against a standard X11 or Wayland desktop session.
+- **Python 3.10+** — check with `python3 --version`.
+- **[uv](https://docs.astral.sh/uv/)** — the Python package/venv manager this project uses. Install it with:
+  ```
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  ```
+- **A running Bluetooth daemon (`bluetoothd`)** if you want the Bluetooth pairing path — optional, the LAN path works without it.
+
+**2. Set up and run**
 
 ```
 cd desktop
@@ -24,9 +45,29 @@ uv pip install -r requirements.txt
 uv run main.py
 ```
 
-On Linux, key simulation uses `pynput`, which needs an X11 session (or, on Wayland, access to `/dev/uinput` — typically means being in the `input` group or running as root). Bluetooth uses BlueZ over D-Bus (`dbus-next`), so a running `bluetoothd` is required for the Bluetooth path — the LAN path works fine without it.
+`uv venv` creates an isolated `.venv/` for this project only (it won't touch any Python packages installed elsewhere on your system). `uv run main.py` starts the server inside that environment.
 
-The terminal prints the desktop's LAN IP, port, a 6-digit pairing code, and an ASCII QR code encoding both, plus the Bluetooth adapter address once the SPP service is registered. Type `h` for the list of commands (regenerate the pairing code, quit).
+**3. Grant key-simulation access**
+
+Key simulation uses `pynput`, which needs permission to inject input:
+- **X11**: works out of the box in a normal desktop session.
+- **Wayland**: `pynput` needs access to `/dev/uinput` — either run the script as a user in the `input` group (`sudo usermod -aG input $USER`, then log out/in) or run it as root.
+
+**4. Read the terminal output**
+
+Once running, the terminal prints:
+- the desktop's LAN IP and port (default `8787`)
+- a 6-digit pairing code
+- an ASCII QR code encoding both, for the mobile app's **Scan QR** button
+- the Bluetooth adapter address, once the SPP service registers (Bluetooth path only)
+
+Type `h` at any time for the list of in-terminal commands (regenerate the pairing code, quit). Keep this terminal open — the app only works while it's running.
+
+**5. Troubleshooting**
+
+- *Nothing happens when the desktop receives a whip* — confirm the terminal shows a `paired` event when the phone connects (not just `hello`); if the pairing code was wrong you'll see an `invalid_code` error instead.
+- *Bluetooth path never shows a device address* — check `bluetoothd` is actually running (`systemctl status bluetooth`); the LAN path is independent and doesn't need this.
+- *Enter doesn't get pressed* — you're most likely on Wayland without `/dev/uinput` access; see step 3.
 
 ### Mobile (`mobile/`)
 

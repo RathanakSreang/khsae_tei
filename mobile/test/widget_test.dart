@@ -8,7 +8,8 @@ void main() {
     await tester.pumpWidget(const KhsaeTeiApp());
     await tester.pump();
 
-    expect(find.text('ខ្សែតី KHSAE TEI'), findsOneWidget);
+    expect(find.text('ខ្សែតី'), findsOneWidget);
+    expect(find.text('KHSAE TEI'), findsOneWidget);
     expect(find.text('Start'), findsOneWidget);
     expect(find.text('Connect'), findsNothing);
   });

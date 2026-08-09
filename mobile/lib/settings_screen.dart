@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,6 +10,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'discovery.dart';
 import 'qr_scan_screen.dart';
 import 'settings_store.dart';
+import 'theme.dart';
+import 'widgets.dart';
 import 'ws_client.dart';
 
 const _batteryChannel = MethodChannel('khsae_tei/multicast_lock');
@@ -21,6 +24,14 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  // Bluetooth mode doesn't work yet on iOS (Apple only allows raw Bluetooth
+  // Classic SPP for MFi-certified accessories, which this desktop server
+  // isn't) or on a macOS desktop (bluetooth_server.py needs BlueZ, Linux-only)
+  // - hidden from the UI until one of those has a real fix. LAN mode and all
+  // the Bluetooth plumbing underneath are untouched; flip this back on to
+  // restore the picker.
+  static const _bluetoothEnabled = false;
+
   final _ipController = TextEditingController();
   final _portController = TextEditingController(text: '8787');
   final _codeController = TextEditingController();
@@ -33,6 +44,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   List<BtcDevice> _pairedDevices = [];
   String? _selectedBtAddress;
   bool _loadingPairedDevices = false;
+  bool _soundEnabled = true;
 
   StreamSubscription<Map<String, dynamic>?>? _statusSub;
   StreamSubscription<Map<String, dynamic>?>? _eventSub;
@@ -59,6 +71,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // No platform implementation available; stay in the default state.
     }
     _loadSavedConfig();
+    _loadSoundSetting();
   }
 
   Future<void> _loadSavedConfig() async {
@@ -66,7 +79,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final saved = await SettingsStore().load();
       if (saved == null || !mounted) return;
       setState(() {
-        _mode = saved.mode;
+        _mode = _bluetoothEnabled ? saved.mode : ConnectionMode.lan;
         _ipController.text = saved.ip;
         _portController.text = saved.port;
         _selectedBtAddress = saved.btAddress.isEmpty ? null : saved.btAddress;
@@ -75,6 +88,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (_) {
       // No platform implementation available; keep the blank defaults.
     }
+  }
+
+  Future<void> _loadSoundSetting() async {
+    try {
+      final enabled = await SettingsStore().loadSoundEnabled();
+      soundEnabledNotifier.value = enabled;
+      if (mounted) setState(() => _soundEnabled = enabled);
+    } catch (_) {
+      // No platform implementation available; keep the default (on).
+    }
+  }
+
+  Future<void> _setSoundEnabled(bool enabled) async {
+    setState(() => _soundEnabled = enabled);
+    soundEnabledNotifier.value = enabled;
+    await SettingsStore().saveSoundEnabled(enabled);
+    FlutterBackgroundService().invoke('updateSoundEnabled', {'enabled': enabled});
   }
 
   @override
@@ -149,6 +179,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _discover() async {
+    // Guard re-entrancy here, not just via the button's onPressed: two taps
+    // landing in the same frame (seen on a real iOS device) can both pass
+    // the disabled check before the rebuild lands, and a second overlapping
+    // MDnsClient.start() fails to bind the multicast socket the first one
+    // is still holding.
+    if (_discovering) return;
     setState(() => _discovering = true);
     try {
       final results = await MdnsDiscovery().discover();
@@ -205,136 +241,199 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Color get _statusColor {
     switch (_status) {
       case ConnectionStatus.paired:
-        return Colors.green;
+        return const Color(0xFF3DDC7A);
       case ConnectionStatus.error:
-        return Colors.red;
+        return const Color(0xFFFF5C5C);
       case ConnectionStatus.connecting:
-        return Colors.orange;
+        return const Color(0xFFFFB84D);
       case ConnectionStatus.disconnected:
-        return Colors.grey;
+        return Colors.white54;
     }
   }
+
+  static const _fieldTextStyle = TextStyle(color: Colors.white);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            SegmentedButton<ConnectionMode>(
-              segments: const [
-                ButtonSegment(value: ConnectionMode.lan, label: Text('LAN')),
-                ButtonSegment(value: ConnectionMode.bluetooth, label: Text('Bluetooth')),
-              ],
-              selected: {_mode},
-              onSelectionChanged: (s) => setState(() => _mode = s.first),
-            ),
-            const SizedBox(height: 16),
-            if (_mode == ConnectionMode.lan) ...[
-              TextField(
-                controller: _ipController,
-                decoration: const InputDecoration(labelText: 'Desktop IP'),
-                keyboardType: TextInputType.number,
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _portController,
-                decoration: const InputDecoration(labelText: 'Port'),
-                keyboardType: TextInputType.number,
-              ),
-            ] else ...[
-              const Text(
-                'Pair with the desktop from your phone\'s Bluetooth settings '
-                'first, then refresh below to pick it.',
-              ),
-              const SizedBox(height: 8),
-              OutlinedButton(
-                onPressed: _loadingPairedDevices ? null : _loadPairedDevices,
-                child: Text(_loadingPairedDevices ? 'Loading...' : 'Refresh paired devices'),
-              ),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                initialValue: _selectedBtAddress,
-                decoration: const InputDecoration(labelText: 'Paired device'),
-                items: _pairedDevices
-                    .map((d) => DropdownMenuItem(value: d.address, child: Text(d.displayName)))
-                    .toList(),
-                onChanged: (address) => setState(() => _selectedBtAddress = address),
-              ),
-            ],
-            const SizedBox(height: 8),
-            TextField(
-              controller: _codeController,
-              decoration: const InputDecoration(labelText: 'Pairing code'),
-              keyboardType: TextInputType.number,
-            ),
-            const SizedBox(height: 16),
-            if (_mode == ConnectionMode.lan)
-              Row(
+      body: Container(
+        decoration: const BoxDecoration(gradient: kBackgroundGradient),
+        child: SafeArea(
+          child: Theme(
+            data: Theme.of(context).copyWith(inputDecorationTheme: kDarkInputDecorationTheme),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: _discovering ? null : _discover,
-                      child: Text(_discovering ? 'Searching...' : 'Discover'),
+                  const Text(
+                    'Settings',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: Colors.white),
+                  ),
+                  const SizedBox(height: 20),
+                  SectionCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (_bluetoothEnabled) ...[
+                          SegmentedButton<ConnectionMode>(
+                            segments: const [
+                              ButtonSegment(value: ConnectionMode.lan, label: Text('LAN')),
+                              ButtonSegment(value: ConnectionMode.bluetooth, label: Text('Bluetooth')),
+                            ],
+                            selected: {_mode},
+                            onSelectionChanged: (s) => setState(() => _mode = s.first),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                        if (_bluetoothEnabled && _mode == ConnectionMode.bluetooth) ...[
+                          const Text(
+                            'Pair with the desktop from your phone\'s Bluetooth settings '
+                            'first, then refresh below to pick it.',
+                            style: TextStyle(color: Colors.white60, fontSize: 13),
+                          ),
+                          const SizedBox(height: 12),
+                          OutlinedPillButton(
+                            onPressed: _loadingPairedDevices ? null : _loadPairedDevices,
+                            label: _loadingPairedDevices ? 'Loading...' : 'Refresh paired devices',
+                          ),
+                          const SizedBox(height: 8),
+                          DropdownButtonFormField<String>(
+                            initialValue: _selectedBtAddress,
+                            dropdownColor: kBgBottom,
+                            style: _fieldTextStyle,
+                            decoration: const InputDecoration(labelText: 'Paired device'),
+                            items: _pairedDevices
+                                .map((d) => DropdownMenuItem(value: d.address, child: Text(d.displayName)))
+                                .toList(),
+                            onChanged: (address) => setState(() => _selectedBtAddress = address),
+                          ),
+                        ] else ...[
+                          TextField(
+                            controller: _ipController,
+                            style: _fieldTextStyle,
+                            decoration: const InputDecoration(labelText: 'Desktop IP'),
+                            keyboardType: TextInputType.number,
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _portController,
+                            style: _fieldTextStyle,
+                            decoration: const InputDecoration(labelText: 'Port'),
+                            keyboardType: TextInputType.number,
+                          ),
+                        ],
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: _codeController,
+                          style: _fieldTextStyle,
+                          decoration: const InputDecoration(labelText: 'Pairing code'),
+                          keyboardType: TextInputType.number,
+                        ),
+                        if (_mode == ConnectionMode.lan) ...[
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedPillButton(
+                                  onPressed: _discovering ? null : _discover,
+                                  label: _discovering ? 'Searching...' : 'Discover',
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(child: OutlinedPillButton(onPressed: _scanQr, label: 'Scan QR')),
+                            ],
+                          ),
+                        ],
+                        const SizedBox(height: 16),
+                        Row(
+                          children: [
+                            Expanded(child: GradientPillButton(onPressed: _connect, label: 'Connect')),
+                            const SizedBox(width: 8),
+                            Expanded(child: OutlinedPillButton(onPressed: _disconnect, label: 'Disconnect')),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton(onPressed: _scanQr, child: const Text('Scan QR')),
+                  const SizedBox(height: 16),
+                  SectionCard(
+                    child: Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              width: 10,
+                              height: 10,
+                              decoration: BoxDecoration(color: _statusColor, shape: BoxShape.circle),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              _statusLabel,
+                              style: TextStyle(color: _statusColor, fontSize: 15, fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        GradientPillButton(
+                          onPressed: _status == ConnectionStatus.paired
+                              ? () => FlutterBackgroundService().invoke('testWhip')
+                              : null,
+                          label: 'Test Whip',
+                          icon: Icons.bolt,
+                          height: 56,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SectionCard(
+                    child: SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      activeThumbColor: kAccent,
+                      title: const Text('Play whip sound', style: TextStyle(color: Colors.white)),
+                      value: _soundEnabled,
+                      onChanged: _setSoundEnabled,
+                    ),
+                  ),
+                  if (Platform.isAndroid) ...[
+                    const SizedBox(height: 16),
+                    SectionCard(
+                      child: OutlinedPillButton(
+                        onPressed: _requestIgnoreBatteryOptimizations,
+                        label: 'Disable battery optimization for this app',
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  SectionCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Events',
+                          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                        ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          height: 200,
+                          child: ListView.builder(
+                            itemCount: _log.length,
+                            itemBuilder: (context, i) => Text(
+                              _log[i],
+                              style: const TextStyle(fontSize: 12, color: Colors.white60),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton(onPressed: _connect, child: const Text('Connect')),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton(onPressed: _disconnect, child: const Text('Disconnect')),
-                ),
-              ],
             ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Container(
-                  width: 12,
-                  height: 12,
-                  decoration: BoxDecoration(color: _statusColor, shape: BoxShape.circle),
-                ),
-                const SizedBox(width: 8),
-                Text(_statusLabel),
-              ],
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _status == ConnectionStatus.paired
-                  ? () => FlutterBackgroundService().invoke('testWhip')
-                  : null,
-              style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 20)),
-              child: const Text('Test Whip', style: TextStyle(fontSize: 20)),
-            ),
-            const SizedBox(height: 16),
-            OutlinedButton(
-              onPressed: _requestIgnoreBatteryOptimizations,
-              child: const Text('Disable battery optimization for this app'),
-            ),
-            const SizedBox(height: 16),
-            const Text('Events', style: TextStyle(fontWeight: FontWeight.bold)),
-            SizedBox(
-              height: 200,
-              child: ListView.builder(
-                itemCount: _log.length,
-                itemBuilder: (context, i) => Text(_log[i], style: const TextStyle(fontSize: 12)),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

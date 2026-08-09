@@ -15,7 +15,8 @@ class KhsaeTeiApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'KHSAE TEI',
+      title: 'ខ្សែតី KHSAE TEI',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.amber)),
       home: const AppShell(),
     );

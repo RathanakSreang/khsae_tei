@@ -34,7 +34,12 @@ Future<void> initializeBackgroundService() async {
   );
 
   await FlutterBackgroundService().configure(
-    iosConfiguration: IosConfiguration(),
+    // iOS has no equivalent of Android's foreground service - onForeground
+    // just runs onStart for as long as the app is active/on-screen, which is
+    // the only regime iOS reliably allows; there's no onBackground handler
+    // because BGAppRefreshTask's ~15s opportunistic, 15-minute-minimum-interval
+    // budget isn't enough to keep a live accelerometer/socket session going.
+    iosConfiguration: IosConfiguration(onForeground: onStart),
     androidConfiguration: AndroidConfiguration(
       onStart: onStart,
       autoStart: false,
@@ -90,6 +95,7 @@ void onStart(ServiceInstance service) async {
   final whipDetector = WhipDetector();
   final settingsStore = SettingsStore();
   ConnectionConfig? currentConfig;
+  bool soundEnabled = await settingsStore.loadSoundEnabled();
 
   Future<void> updateNotification(String content) async {
     if (service is AndroidServiceInstance) {
@@ -135,7 +141,7 @@ void onStart(ServiceInstance service) async {
   }
 
   whipDetector.onWhip.listen((_) {
-    soundPlayer.playWhip();
+    if (soundEnabled) soundPlayer.playWhip();
     sendWhip();
   });
   whipDetector.start();
@@ -145,6 +151,12 @@ void onStart(ServiceInstance service) async {
     final config = ConnectionConfig.fromMap(event.map((k, v) => MapEntry(k, v.toString())));
     currentConfig = config;
     await settingsStore.save(config);
+  });
+
+  service.on('updateSoundEnabled').listen((event) async {
+    final enabled = event?['enabled'] as bool? ?? true;
+    soundEnabled = enabled;
+    await settingsStore.saveSoundEnabled(enabled);
   });
 
   service.on('connect').listen((_) => connectCurrent());

@@ -1,0 +1,16 @@
+flutter_launcher_icons:
+  android: true
+  ios: true
+  min_sdk_android: 24
+  # Legacy/pre-adaptive Android icon: the full-bleed nebula artwork, opaque
+  # edge to edge (no baked rounding - Android shows legacy icons as-is).
+  image_path_android: "assets/branding/generated/icon_full.png"
+  # iOS forbids alpha in App Store icons; source has none, but keep this on
+  # as a safety net.
+  image_path_ios: "assets/branding/generated/icon_ios.png"
+  remove_alpha_ios: true
+  # Android 8+ adaptive icon: artwork scaled into the ~66% safe zone so the
+  # whip and both text lines survive being masked to a circle/squircle/
+  # rounded-square depending on launcher, on a matching dark-navy backing.
+  adaptive_icon_background: "#0d2334"
+  adaptive_icon_foreground: "assets/branding/generated/icon_adaptive_fg.png"
