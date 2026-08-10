@@ -12,7 +12,7 @@ Screenshots are in [`store_assets/screenshots/`](store_assets/screenshots/).
 | Display name | ខ្សែតី KHSAE TEI |
 | iOS bundle ID | `com.khsaetei.khsaeTei` |
 | Android application ID | `com.khsaetei.khsae_tei` |
-| Version | 1.0.0 (build 1) — from `pubspec.yaml` |
+| Version | 1.0.0 (build 2) — from `pubspec.yaml` |
 | Category suggestion | Utilities / Productivity |
 | Platforms | iOS 13+, Android 7.0+ (API 24+) |
 
@@ -110,7 +110,7 @@ desktop remote, keyboard, productivity, accessibility, local network, LAN
 
 **Release name** (Play Console → Production → Create release; internal
 label, not shown to users):
-> 1.0.0 (1) — Initial release
+> 1.0.0 (2) — Initial release
 
 **Release notes** (Play Console → same screen; this one IS user-facing, on
 the "What's new" section of the store listing — ≤500 chars per language):
