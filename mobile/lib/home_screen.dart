@@ -1,11 +1,15 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'settings_store.dart';
 import 'theme.dart';
 import 'whip_controller.dart';
 import 'ws_client.dart';
+
+const _repoUrl = 'https://github.com/RathanakSreang/khsae_tei';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -115,11 +119,36 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('How it works'),
-        content: const Text(
-          'Swing your phone like a whip. KHSAE TEI detects the motion, plays '
-          'a sound, and tells your paired desktop to press Enter - handy for '
-          'approving a prompt without reaching for the keyboard.\n\n'
-          'Pair a desktop from the Settings tab first, then tap Start here.',
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Swing your phone like a whip. KHSAE TEI detects the motion, plays '
+                'a sound, and tells your paired desktop to press Enter - handy for '
+                'approving a prompt without reaching for the keyboard.',
+              ),
+              const SizedBox(height: 16),
+              const Text('Setting up the desktop', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              const Text(
+                '1. Clone the repo and set up the desktop app (Python, Linux only for now).\n'
+                '2. Run it - the terminal prints a pairing code and QR code.\n'
+                '3. In this app\'s Settings tab, scan the QR or enter the IP/port/code, then Connect.\n'
+                '4. Come back here and tap Start.',
+              ),
+              const SizedBox(height: 12),
+              RichText(
+                text: TextSpan(
+                  style: const TextStyle(color: kAccent, decoration: TextDecoration.underline),
+                  text: _repoUrl,
+                  recognizer: TapGestureRecognizer()
+                    ..onTap = () => launchUrl(Uri.parse(_repoUrl), mode: LaunchMode.externalApplication),
+                ),
+              ),
+            ],
+          ),
         ),
         actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Got it'))],
       ),
@@ -129,7 +158,6 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      drawer: _buildDrawer(context),
       body: Container(
         decoration: const BoxDecoration(gradient: kBackgroundGradient),
         child: SafeArea(
@@ -138,11 +166,8 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               children: [
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _CircleIconButton(icon: Icons.menu, onTap: () => Scaffold.of(context).openDrawer()),
-                    _CircleIconButton(icon: Icons.help_outline, onTap: _showHelp),
-                  ],
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [_CircleIconButton(icon: Icons.help_outline, onTap: _showHelp)],
                 ),
                 const SizedBox(height: 12),
                 const Text(
@@ -181,39 +206,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(height: 16),
                 _StatsRow(connectionStat: _connectionStat),
+                const SizedBox(height: 16),
+                _DPad(enabled: _status == ConnectionStatus.paired, onPress: WhipController().sendKey),
               ],
             ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDrawer(BuildContext context) {
-    return Drawer(
-      backgroundColor: kBgBottom,
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: Image.asset('assets/branding/khsae_tei_logo.png', width: 72, height: 72),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'ខ្សែតី KHSAE TEI',
-                style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'A "whip-app": swing your phone to send an Enter keypress to a '
-                'paired desktop over LAN.',
-                style: TextStyle(color: Colors.white70, fontSize: 14, height: 1.4),
-              ),
-            ],
           ),
         ),
       ),
@@ -236,6 +232,73 @@ class _CircleIconButton extends StatelessWidget {
         customBorder: const CircleBorder(),
         onTap: onTap,
         child: Padding(padding: const EdgeInsets.all(12), child: Icon(icon, color: kAccent, size: 22)),
+      ),
+    );
+  }
+}
+
+/// Sends arrow-key presses to the paired desktop - same transport as the
+/// whip gesture, just a direct key instead of Enter.
+class _DPad extends StatelessWidget {
+  const _DPad({required this.enabled, required this.onPress});
+
+  final bool enabled;
+  final void Function(String direction) onPress;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 20),
+      decoration: BoxDecoration(
+        color: kCardFill,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: kCardBorder),
+      ),
+      child: Column(
+        children: [
+          Text(
+            'Arrow keys',
+            style: TextStyle(color: enabled ? Colors.white70 : Colors.white38, fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          _DPadButton(icon: Icons.keyboard_arrow_up, enabled: enabled, onTap: () => onPress('up')),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _DPadButton(icon: Icons.keyboard_arrow_left, enabled: enabled, onTap: () => onPress('left')),
+              const SizedBox(width: 48),
+              _DPadButton(icon: Icons.keyboard_arrow_right, enabled: enabled, onTap: () => onPress('right')),
+            ],
+          ),
+          const SizedBox(height: 8),
+          _DPadButton(icon: Icons.keyboard_arrow_down, enabled: enabled, onTap: () => onPress('down')),
+        ],
+      ),
+    );
+  }
+}
+
+class _DPadButton extends StatelessWidget {
+  const _DPadButton({required this.icon, required this.enabled, required this.onTap});
+
+  final IconData icon;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white.withValues(alpha: 0.06),
+      shape: CircleBorder(side: BorderSide(color: enabled ? kCardBorder : kCardBorder.withValues(alpha: 0.5))),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: enabled ? onTap : null,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Icon(icon, color: enabled ? kAccent : Colors.white24, size: 26),
+        ),
       ),
     );
   }

@@ -119,6 +119,12 @@ class WsClient {
     _send({'type': 'whip', 'ts': DateTime.now().millisecondsSinceEpoch});
   }
 
+  /// [direction] must be one of 'up', 'down', 'left', 'right'.
+  void sendKey(String direction) {
+    if (_current != ConnectionStatus.paired) return;
+    _send({'type': 'key', 'key': direction});
+  }
+
   void _send(Map<String, dynamic> msg) {
     _channel?.sink.add(jsonEncode(msg));
   }

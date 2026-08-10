@@ -61,4 +61,7 @@ class WhipController {
   void disconnect() => _client.disconnect();
 
   void testWhip() => _client.sendWhip();
+
+  /// [direction] must be one of 'up', 'down', 'left', 'right'.
+  void sendKey(String direction) => _client.sendKey(direction);
 }

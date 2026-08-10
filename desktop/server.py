@@ -4,9 +4,10 @@ import random
 import websockets
 from websockets.exceptions import ConnectionClosed
 
-from keypress import simulate_enter
+from keypress import simulate_arrow, simulate_enter
 
 DEFAULT_PORT = 8787
+ARROW_KEYS = {"up", "down", "left", "right"}
 
 
 def generate_code():
@@ -94,6 +95,24 @@ class WhipServer:
                     await simulate_enter()
                     await send({"type": "ack"})
                     self._emit({"kind": "whip", "remote": remote_label, "ts": msg.get("ts")})
+                except Exception as err:
+                    await send({"type": "error", "reason": "keypress_failed"})
+                    self._emit({
+                        "kind": "keypress_failed",
+                        "remote": remote_label,
+                        "error": str(err),
+                    })
+                return
+
+            if msg.get("type") == "key":
+                direction = msg.get("key")
+                if direction not in ARROW_KEYS:
+                    await send({"type": "error", "reason": "invalid_key"})
+                    return
+                try:
+                    await simulate_arrow(direction)
+                    await send({"type": "ack"})
+                    self._emit({"kind": "key", "remote": remote_label, "key": direction})
                 except Exception as err:
                     await send({"type": "error", "reason": "keypress_failed"})
                     self._emit({
