@@ -196,6 +196,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Image.asset('assets/branding/khsae_tei_logo.png', fit: BoxFit.cover),
                 ),
                 const SizedBox(height: 24),
+                _DPad(enabled: _status == ConnectionStatus.paired, onPress: WhipController().sendKey),
+                const SizedBox(height: 16),
                 _StatusCard(
                   statusColor: _statusColor,
                   statusLabel: _statusLabel,
@@ -206,8 +208,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(height: 16),
                 _StatsRow(connectionStat: _connectionStat),
-                const SizedBox(height: 16),
-                _DPad(enabled: _status == ConnectionStatus.paired, onPress: WhipController().sendKey),
               ],
             ),
           ),
