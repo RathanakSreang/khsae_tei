@@ -8,6 +8,8 @@ A "whip-app": swing your phone, it plays a whip sound and tells your desktop to 
 
 The mobile app above is the whip-detector; you still need the desktop app running on the machine you want to control (see [Install the desktop app](#install-the-desktop-app) below — it isn't packaged yet, so it's run from source).
 
+<img src="mobile/store_assets/screenshots_ios/app_preview.png" alt="KHSAE TEI mobile app screenshots: home screen, pairing code screen, and how it works" width="100%">
+
 ## Status: MVP (Linux desktop only)
 
 - **mobile app** (Flutter) — detects the whip gesture via accelerometer, plays a sound, sends the signal. Published on Google Play (link above).
